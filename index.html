@@ -3,35 +3,513 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#1f563b">
     <title>PERDISWEB - Dienstplan</title>
-    <link rel="stylesheet" href="styles.css">
-    <link rel="manifest" href="manifest.json">
+    <style>
+        :root {
+            --color-primary: #008B8B;
+            --color-secondary: #20B2AA;
+            --color-bg: #f5f5f5;
+            --color-surface: #ffffff;
+            --color-text: #1a1a1a;
+            --color-text-secondary: #666666;
+            --color-border: #e0e0e0;
+            --color-success: #4CAF50;
+            --color-warning: #ff9800;
+            --color-error: #f44336;
+        }
+
+        [data-theme="dark"] {
+            --color-bg: #1a1a1a;
+            --color-surface: #2d2d2d;
+            --color-text: #ffffff;
+            --color-text-secondary: #cccccc;
+            --color-border: #404040;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--color-bg);
+            color: var(--color-text);
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .header-user {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+
+        /* Main Content */
+        .main {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        /* Navigation */
+        .nav-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            background: var(--color-surface);
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .nav-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            background: var(--color-border);
+            color: var(--color-text);
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+
+        .nav-btn.active {
+            background: var(--color-primary);
+            color: white;
+        }
+
+        .nav-btn:hover {
+            background: var(--color-secondary);
+            color: white;
+        }
+
+        /* Views */
+        .view {
+            display: none;
+        }
+
+        .view.active {
+            display: block;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* Mein Tag View */
+        .today-card {
+            background: var(--color-surface);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid var(--color-primary);
+        }
+
+        .today-date {
+            font-size: 12px;
+            color: var(--color-text-secondary);
+            margin-bottom: 10px;
+        }
+
+        .today-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: var(--color-text);
+        }
+
+        /* Perlschnur Layout */
+        .perlschnur {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .fahrt-item {
+            background: var(--color-bg);
+            border: 1px solid var(--color-border);
+            border-radius: 6px;
+            padding: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: all 0.2s;
+        }
+
+        .fahrt-item:hover {
+            border-color: var(--color-primary);
+            box-shadow: 0 2px 6px rgba(0, 139, 139, 0.1);
+        }
+
+        .fahrt-line {
+            font-weight: 700;
+            color: var(--color-primary);
+            font-size: 16px;
+            min-width: 45px;
+            text-align: center;
+        }
+
+        .fahrt-times {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex: 1;
+        }
+
+        .fahrt-time {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+        }
+
+        .fahrt-time.start {
+            color: var(--color-success);
+            font-weight: 600;
+        }
+
+        .fahrt-time.end {
+            color: var(--color-warning);
+        }
+
+        .fahrt-ort {
+            font-size: 12px;
+            color: var(--color-text-secondary);
+            text-align: right;
+            min-width: 100px;
+        }
+
+        .dienst-header {
+            background: var(--color-primary);
+            color: white;
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        /* Dienstplan View */
+        .dienstplan-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .dienstplan-day {
+            background: var(--color-surface);
+            border-radius: 6px;
+            padding: 15px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 2px solid transparent;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .dienstplan-day:hover {
+            border-color: var(--color-primary);
+            box-shadow: 0 2px 8px rgba(0, 139, 139, 0.15);
+            transform: translateY(-2px);
+        }
+
+        .dienstplan-day-date {
+            font-size: 12px;
+            color: var(--color-text-secondary);
+            margin-bottom: 5px;
+        }
+
+        .dienstplan-day-title {
+            font-weight: 600;
+            font-size: 15px;
+            margin-bottom: 8px;
+        }
+
+        .dienstplan-day-summary {
+            font-size: 12px;
+            color: var(--color-text-secondary);
+        }
+
+        /* Calendar / Tageswahl */
+        .calendar-container {
+            background: var(--color-surface);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .calendar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .calendar-header button {
+            background: var(--color-primary);
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+
+        .calendar-day {
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid var(--color-border);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .calendar-day:hover:not(.disabled) {
+            border-color: var(--color-primary);
+            background: var(--color-bg);
+        }
+
+        .calendar-day.selected {
+            background: var(--color-primary);
+            color: white;
+            border-color: var(--color-primary);
+        }
+
+        .calendar-day.today {
+            border-color: var(--color-warning);
+        }
+
+        .calendar-day.disabled {
+            color: var(--color-text-secondary);
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .selected-date-view {
+            display: none;
+        }
+
+        .selected-date-view.active {
+            display: block;
+        }
+
+        /* PDF Actions */
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+
+        .btn-primary {
+            background: var(--color-primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--color-secondary);
+            box-shadow: 0 4px 12px rgba(0, 139, 139, 0.3);
+        }
+
+        .btn-secondary {
+            background: var(--color-border);
+            color: var(--color-text);
+        }
+
+        .btn-secondary:hover {
+            background: var(--color-text-secondary);
+            color: white;
+        }
+
+        .btn-danger {
+            background: var(--color-error);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #da190b;
+        }
+
+        /* Footer */
+        .footer {
+            background: var(--color-surface);
+            padding: 15px 20px;
+            text-align: center;
+            border-top: 1px solid var(--color-border);
+            font-size: 12px;
+            color: var(--color-text-secondary);
+        }
+
+        .footer-controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 10px;
+        }
+
+        .theme-toggle {
+            background: var(--color-border);
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        /* Loading & Messages */
+        .loading {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--color-text-secondary);
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 4px solid var(--color-border);
+            border-top-color: var(--color-primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .message {
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            animation: slideIn 0.3s;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateY(-10px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .message.success {
+            background: rgba(76, 175, 80, 0.1);
+            color: var(--color-success);
+            border-left: 4px solid var(--color-success);
+        }
+
+        .message.error {
+            background: rgba(244, 67, 54, 0.1);
+            color: var(--color-error);
+            border-left: 4px solid var(--color-error);
+        }
+
+        /* Server Select */
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--color-border);
+            border-radius: 6px;
+            font-size: 14px;
+            background-color: var(--color-surface);
+            color: var(--color-text);
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .header h1 {
+                font-size: 18px;
+            }
+
+            .nav-tabs {
+                padding: 8px;
+            }
+
+            .nav-btn {
+                font-size: 12px;
+                padding: 10px;
+            }
+
+            .fahrt-item {
+                flex-wrap: wrap;
+            }
+
+            .fahrt-ort {
+                flex-basis: 100%;
+                text-align: left;
+                margin-top: 5px;
+            }
+        }
+    </style>
 </head>
 <body>
-    <div class="app-container">
+    <div class="container">
         <!-- Header -->
-        <header class="header">
-            <div class="header-content">
-                <h1 class="logo">PERDISWEB</h1>
-                <div class="header-right">
-                    <span id="userDisplay" class="user-info">Nicht angemeldet</span>
-                    <button class="btn-logout" id="logoutBtn" style="display: none;">Abmelden</button>
-                </div>
-            </div>
-        </header>
+        <div class="header">
+            <h1>PERDISWEB</h1>
+            <div class="header-user" id="headerUser">Nicht angemeldet</div>
+        </div>
 
-        <!-- Login Screen -->
-        <div id="loginScreen" class="screen active">
-            <div class="login-container">
-                <div class="login-card">
-                    <h2>PERDIS Dienstplan Login</h2>
-                    <div class="login-info">Geben Sie Ihre PERDIS-Anmeldedaten ein</div>
-                    
-                    <form id="loginForm" onsubmit="handleLogin(event)">
-                        <div class="form-group">
-                            <label for="serverSelect">PERDIS Server</label>
-                            <select id="serverSelect" required>
+        <!-- Main Content -->
+        <div class="main">
+            <!-- Login View -->
+            <div id="loginView" class="view active">
+                <div style="padding: 40px 20px; text-align: center;">
+                    <div style="background: var(--color-surface); border-radius: 8px; padding: 30px; max-width: 400px; margin: 0 auto; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);">
+                        <h2 style="margin-bottom: 20px; color: var(--color-primary);">Anmelden</h2>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; text-align: left; margin-bottom: 5px; font-size: 12px;">PERDIS Server</label>
+                            <select id="serverUrl">
                                 <option value="">-- Server wählen --</option>
                                 <option value="https://perdisweb.verkehrs-ag.de">Verkehrs-AG</option>
                                 <option value="https://perdis.regiobus.de">RegioBus</option>
@@ -40,87 +518,466 @@
                             </select>
                         </div>
 
-                        <div class="form-group">
-                            <label for="username">Benutzername</label>
-                            <input type="text" id="username" placeholder="Benutzername" required>
+                        <div style="margin-bottom: 15px;">
+                            <input 
+                                type="text" 
+                                id="username" 
+                                placeholder="Benutzername" 
+                                style="width: 100%; padding: 12px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 14px;"
+                            >
                         </div>
 
-                        <div class="form-group">
-                            <label for="password">Passwort</label>
-                            <input type="password" id="password" placeholder="Passwort" required>
+                        <div style="margin-bottom: 20px;">
+                            <input 
+                                type="password" 
+                                id="password" 
+                                placeholder="Passwort" 
+                                style="width: 100%; padding: 12px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 14px;"
+                            >
                         </div>
 
-                        <button type="submit" class="btn-primary btn-full">Anmelden</button>
-                    </form>
+                        <button id="loginBtn" class="btn btn-primary" style="width: 100%;">
+                            Anmelden
+                        </button>
 
-                    <div id="loginError" class="error-message" style="display: none;"></div>
-                    <div id="loginLoading" class="loading" style="display: none;">Anmeldung wird verarbeitet...</div>
+                        <div id="loginMessage" style="margin-top: 15px; font-size: 12px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main App Views -->
+            <div id="appViews" style="display: none;">
+                <!-- Navigation -->
+                <div class="nav-tabs">
+                    <button class="nav-btn active" onclick="switchView('today')">Mein Tag</button>
+                    <button class="nav-btn" onclick="switchView('roster')">Dienstplan</button>
+                    <button class="nav-btn" onclick="switchView('calendar')">Tageswahl</button>
+                </div>
+
+                <!-- Mein Tag View -->
+                <div id="todayView" class="view active">
+                    <div id="todayContent" class="loading">
+                        <div class="spinner"></div>
+                        <p style="margin-top: 15px;">Laden...</p>
+                    </div>
+                </div>
+
+                <!-- Dienstplan View -->
+                <div id="rosterView" class="view">
+                    <div id="rosterContent" class="loading">
+                        <div class="spinner"></div>
+                        <p style="margin-top: 15px;">Dienstplan wird geladen...</p>
+                    </div>
+                </div>
+
+                <!-- Tageswahl View -->
+                <div id="calendarView" class="view">
+                    <div class="calendar-container">
+                        <div class="calendar-header">
+                            <button onclick="previousMonth()">← Zurück</button>
+                            <h3 id="monthYear" style="margin: 0;">Januar 2026</h3>
+                            <button onclick="nextMonth()">Weiter →</button>
+                        </div>
+                        <div id="calendarGrid" class="calendar-grid"></div>
+                    </div>
+                    <div id="selectedDateView" class="selected-date-view">
+                        <div id="selectedDateContent"></div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Main App -->
-        <div id="mainApp" style="display: none; flex: 1; display: flex; flex-direction: column;">
-            <!-- Navigation -->
-            <nav class="nav-tabs" id="navTabs">
-                <button class="nav-tab active" data-screen="mein-tag">Mein Tag</button>
-                <button class="nav-tab" data-screen="dienstplan">Dienstplan</button>
-                <button class="nav-tab" data-screen="tageswahl">Tageswahl</button>
-            </nav>
-
-            <!-- Content Area -->
-            <div class="content-area">
-                <!-- Mein Tag -->
-                <div id="mein-tag" class="screen active">
-                    <div class="screen-content">
-                        <h2>Mein heutiger Dienstplan</h2>
-                        <div id="meinTagContent" class="dienstplan-container">
-                            <div class="loading">Dienstplan wird geladen...</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Dienstplan Kalender -->
-                <div id="dienstplan" class="screen">
-                    <div class="screen-content">
-                        <h2>Dienstplan Übersicht</h2>
-                        <div id="dienstplanCalendar" class="dienstplan-container">
-                            <div class="loading">Daten werden geladen...</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Tageswahl -->
-                <div id="tageswahl" class="screen">
-                    <div class="screen-content">
-                        <h2>Tageswahl</h2>
-                        <div class="date-picker-container">
-                            <input type="date" id="datePicker" class="date-input">
-                            <button class="btn-primary" id="showDateBtn">Anzeigen</button>
-                        </div>
-                        <div id="tageswahlContent" class="dienstplan-container"></div>
-                    </div>
-                </div>
+        <!-- Footer -->
+        <div class="footer">
+            <div class="footer-controls">
+                <button class="theme-toggle" onclick="toggleTheme()">🌙 Darkmode</button>
+                <button class="theme-toggle" onclick="logout()" id="logoutBtn" style="display: none;">Abmelden</button>
             </div>
+            <div>PERDISWEB v1.0 - ECHTE Daten von PERDIS Server</div>
         </div>
     </div>
 
-    <!-- PDF Modal -->
-    <div id="pdfModal" class="modal" style="display: none;">
-        <div class="modal-content">
-            <button class="modal-close" id="closePdfBtn">&times;</button>
-            <h3 id="pdfTitle">Dienstplan</h3>
-            <div class="pdf-viewer-container">
-                <iframe id="pdfViewer" src="" style="width: 100%; height: 500px; border: none;"></iframe>
-            </div>
-            <div class="modal-actions">
-                <button class="btn-secondary" id="downloadPdfBtn">Download</button>
-                <button class="btn-primary" id="sharePdfBtn">Teilen</button>
-            </div>
-        </div>
-    </div>
+    <script>
+        // ===== State =====
+        let appState = {
+            isLoggedIn: false,
+            username: '',
+            serverUrl: '',
+            roster: {},
+            selectedDate: new Date(),
+            currentMonth: new Date()
+        };
 
-    <script src="config.js"></script>
-    <script src="app-new.js"></script>
+        // ===== LocalStorage Utils =====
+        const StorageUtil = {
+            encrypt: (text) => btoa(text),
+            decrypt: (encoded) => atob(encoded),
+            save: (key, value) => localStorage.setItem(key, StorageUtil.encrypt(JSON.stringify(value))),
+            load: (key) => {
+                const encrypted = localStorage.getItem(key);
+                return encrypted ? JSON.parse(StorageUtil.decrypt(encrypted)) : null;
+            },
+            clear: () => localStorage.clear()
+        };
+
+        // ===== Real Login with Netlify Function =====
+        async function login() {
+            const serverUrl = document.getElementById('serverUrl').value;
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const messageEl = document.getElementById('loginMessage');
+
+            if (!serverUrl || !username || !password) {
+                messageEl.className = 'message error';
+                messageEl.textContent = 'Alle Felder erforderlich';
+                return;
+            }
+
+            messageEl.innerHTML = '<div class="spinner" style="width: 20px; height: 20px; display: inline-block;"></div>';
+
+            try {
+                // Call Netlify Function (CORS Proxy)
+                const response = await fetch('/.netlify/functions/perdis-login', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        serverUrl,
+                        username,
+                        password
+                    })
+                });
+
+                const result = await response.json();
+
+                if (!response.ok || !result.success) {
+                    throw new Error(result.error || 'Anmeldung fehlgeschlagen');
+                }
+
+                // Speichere Session
+                appState.isLoggedIn = true;
+                appState.username = username;
+                appState.serverUrl = serverUrl;
+                appState.roster = result.roster || {};
+
+                StorageUtil.save('perdis_session', {
+                    username,
+                    serverUrl,
+                    timestamp: Date.now()
+                });
+
+                StorageUtil.save('perdis_roster', appState.roster);
+
+                // Zeige App
+                document.getElementById('loginView').classList.remove('active');
+                document.getElementById('appViews').style.display = 'block';
+                document.getElementById('logoutBtn').style.display = 'block';
+                document.getElementById('headerUser').textContent = `Angemeldet als: ${username}`;
+
+                // Lade Screens
+                loadTodaySchedule();
+                renderCalendar();
+
+                messageEl.className = 'message success';
+                messageEl.textContent = 'Erfolgreich angemeldet!';
+            } catch (error) {
+                messageEl.className = 'message error';
+                messageEl.textContent = 'Fehler: ' + error.message;
+            }
+        }
+
+        // ===== Logout =====
+        function logout() {
+            if (confirm('Wirklich abmelden?')) {
+                StorageUtil.clear();
+                appState.isLoggedIn = false;
+                appState.username = '';
+                appState.serverUrl = '';
+
+                document.getElementById('loginView').classList.add('active');
+                document.getElementById('appViews').style.display = 'none';
+                document.getElementById('logoutBtn').style.display = 'none';
+                document.getElementById('headerUser').textContent = 'Nicht angemeldet';
+                document.getElementById('serverUrl').value = '';
+                document.getElementById('username').value = '';
+                document.getElementById('password').value = '';
+            }
+        }
+
+        // ===== Today Schedule =====
+        function loadTodaySchedule() {
+            const today = new Date().toISOString().split('T')[0];
+            const todayData = appState.roster[today] || [];
+            const container = document.getElementById('todayContent');
+
+            if (todayData.length === 0) {
+                container.innerHTML = '<p style="text-align: center; padding: 30px; color: var(--color-text-secondary);">Heute keine Dienste geplant</p>';
+                return;
+            }
+
+            let html = '<div class="today-card">';
+            html += `<div class="dienst-header">Dienste am ${formatDate(today)}</div>`;
+            html += '<div class="perlschnur">';
+
+            todayData.forEach(fahrt => {
+                html += `
+                    <div class="fahrt-item">
+                        <div class="fahrt-line">${fahrt.line}</div>
+                        <div class="fahrt-times">
+                            <div class="fahrt-time start">▶ ${fahrt.start}</div>
+                            <div class="fahrt-time end">■ ${fahrt.end}</div>
+                        </div>
+                        <div class="fahrt-ort">${fahrt.location}</div>
+                    </div>
+                `;
+            });
+
+            html += '</div>';
+            html += '<div class="action-buttons">';
+            html += `<button class="btn btn-primary" onclick="downloadPDF('${today}')">PDF downloaden</button>`;
+            html += `<button class="btn btn-secondary" onclick="sharePDF('${today}')">Teilen</button>`;
+            html += '</div>';
+            html += '</div>';
+
+            container.innerHTML = html;
+        }
+
+        // ===== Roster View =====
+        function loadRosterView() {
+            const container = document.getElementById('rosterContent');
+            const dates = Object.keys(appState.roster).sort();
+
+            if (dates.length === 0) {
+                container.innerHTML = '<p style="text-align: center; padding: 30px;">Keine Dienstpläne vorhanden</p>';
+                return;
+            }
+
+            let html = '<div class="dienstplan-list">';
+
+            dates.forEach(date => {
+                const fahrten = appState.roster[date];
+                const summary = fahrten.map(f => f.line).join(', ');
+
+                html += `
+                    <div class="dienstplan-day" onclick="selectDateFromRoster('${date}')">
+                        <div class="dienstplan-day-date">${formatDate(date)}</div>
+                        <div class="dienstplan-day-title">Linien: ${summary}</div>
+                        <div class="dienstplan-day-summary">${fahrten.length} Fahrt(en)</div>
+                    </div>
+                `;
+            });
+
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        // ===== Calendar =====
+        function renderCalendar() {
+            const year = appState.currentMonth.getFullYear();
+            const month = appState.currentMonth.getMonth();
+
+            const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
+                'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+            document.getElementById('monthYear').textContent = `${monthNames[month]} ${year}`;
+
+            const firstDay = new Date(year, month, 1);
+            const startDate = new Date(firstDay);
+            startDate.setDate(startDate.getDate() - firstDay.getDay());
+
+            const grid = document.getElementById('calendarGrid');
+            grid.innerHTML = '';
+
+            const today = new Date().toISOString().split('T')[0];
+            const weekDays = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+
+            weekDays.forEach(day => {
+                const header = document.createElement('div');
+                header.textContent = day;
+                header.style.textAlign = 'center';
+                header.style.fontWeight = '600';
+                header.style.fontSize = '12px';
+                header.style.color = 'var(--color-text-secondary)';
+                header.style.padding = '8px';
+                grid.appendChild(header);
+            });
+
+            for (let i = 0; i < 42; i++) {
+                const date = new Date(startDate);
+                date.setDate(startDate.getDate() + i);
+                const dateStr = date.toISOString().split('T')[0];
+
+                const dayEl = document.createElement('div');
+                dayEl.className = 'calendar-day';
+
+                if (date.getMonth() !== month) {
+                    dayEl.classList.add('disabled');
+                }
+
+                if (dateStr === today) {
+                    dayEl.classList.add('today');
+                }
+
+                if (dateStr === appState.selectedDate.toISOString().split('T')[0]) {
+                    dayEl.classList.add('selected');
+                }
+
+                dayEl.textContent = date.getDate();
+
+                if (date.getMonth() === month) {
+                    dayEl.onclick = () => selectCalendarDate(dateStr);
+                }
+
+                grid.appendChild(dayEl);
+            }
+        }
+
+        function selectCalendarDate(dateStr) {
+            appState.selectedDate = new Date(dateStr);
+            const selectedData = appState.roster[dateStr];
+
+            if (!selectedData || selectedData.length === 0) {
+                document.getElementById('selectedDateView').classList.add('active');
+                document.getElementById('selectedDateContent').innerHTML = `
+                    <div style="background: var(--color-surface); border-radius: 8px; padding: 30px; text-align: center;">
+                        <p style="color: var(--color-text-secondary);">Keine Dienste am ${formatDate(dateStr)}</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '<div class="today-card">';
+            html += `<div class="dienst-header">Dienste am ${formatDate(dateStr)}</div>`;
+            html += '<div class="perlschnur">';
+
+            selectedData.forEach(fahrt => {
+                html += `
+                    <div class="fahrt-item">
+                        <div class="fahrt-line">${fahrt.line}</div>
+                        <div class="fahrt-times">
+                            <div class="fahrt-time start">▶ ${fahrt.start}</div>
+                            <div class="fahrt-time end">■ ${fahrt.end}</div>
+                        </div>
+                        <div class="fahrt-ort">${fahrt.location}</div>
+                    </div>
+                `;
+            });
+
+            html += '</div>';
+            html += '<div class="action-buttons">';
+            html += `<button class="btn btn-primary" onclick="downloadPDF('${dateStr}')">PDF downloaden</button>`;
+            html += `<button class="btn btn-secondary" onclick="sharePDF('${dateStr}')">Teilen</button>`;
+            html += '</div>';
+            html += '</div>';
+
+            document.getElementById('selectedDateView').classList.add('active');
+            document.getElementById('selectedDateContent').innerHTML = html;
+            renderCalendar();
+        }
+
+        function previousMonth() {
+            appState.currentMonth.setMonth(appState.currentMonth.getMonth() - 1);
+            renderCalendar();
+        }
+
+        function nextMonth() {
+            appState.currentMonth.setMonth(appState.currentMonth.getMonth() + 1);
+            renderCalendar();
+        }
+
+        // ===== Navigation =====
+        function switchView(viewName) {
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+
+            if (viewName === 'today') {
+                document.getElementById('todayView').classList.add('active');
+            } else if (viewName === 'roster') {
+                document.getElementById('rosterView').classList.add('active');
+                loadRosterView();
+            } else if (viewName === 'calendar') {
+                document.getElementById('calendarView').classList.add('active');
+            }
+
+            event.target.classList.add('active');
+        }
+
+        function selectDateFromRoster(dateStr) {
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('calendarView').classList.add('active');
+            appState.currentMonth = new Date(dateStr);
+            renderCalendar();
+            selectCalendarDate(dateStr);
+        }
+
+        // ===== PDF Functions =====
+        function downloadPDF(dateStr) {
+            const pdfUrl = `${appState.serverUrl}/WebComm/shiprint.aspx?${dateStr}`;
+            window.open(pdfUrl, '_blank');
+        }
+
+        function sharePDF(dateStr) {
+            const pdfUrl = `${appState.serverUrl}/WebComm/shiprint.aspx?${dateStr}`;
+
+            if (navigator.share) {
+                navigator.share({
+                    title: 'Dienstplan',
+                    text: `Mein Dienstplan vom ${formatDate(dateStr)}`,
+                    url: pdfUrl
+                }).catch(err => console.log('Fehler beim Teilen:', err));
+            } else {
+                alert('Teilen wird von diesem Browser nicht unterstützt');
+                downloadPDF(dateStr);
+            }
+        }
+
+        // ===== Theme Toggle =====
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme');
+            const newTheme = current === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+        }
+
+        // ===== Helpers =====
+        function formatDate(dateStr) {
+            const date = new Date(dateStr + 'T00:00:00');
+            const days = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+            return `${days[date.getDay()]}, ${date.getDate()}.${date.getMonth() + 1}.${date.getFullYear()}`;
+        }
+
+        // ===== Event Listeners =====
+        document.getElementById('loginBtn').onclick = login;
+        document.getElementById('username').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') login();
+        });
+        document.getElementById('password').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') login();
+        });
+
+        // ===== Initialization =====
+        window.addEventListener('load', () => {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+
+            const session = StorageUtil.load('perdis_session');
+            if (session) {
+                appState.username = session.username;
+                appState.serverUrl = session.serverUrl;
+                
+                const roster = StorageUtil.load('perdis_roster');
+                if (roster) {
+                    appState.isLoggedIn = true;
+                    appState.roster = roster;
+                    
+                    document.getElementById('loginView').classList.remove('active');
+                    document.getElementById('appViews').style.display = 'block';
+                    document.getElementById('logoutBtn').style.display = 'block';
+                    document.getElementById('headerUser').textContent = `Angemeldet als: ${appState.username}`;
+                    
+                    loadTodaySchedule();
+                    renderCalendar();
+                }
+            }
+        });
+    </script>
 </body>
 </html>
