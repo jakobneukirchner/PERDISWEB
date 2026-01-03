@@ -453,17 +453,6 @@
             border-left: 4px solid var(--color-error);
         }
 
-        /* Server Select */
-        select {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid var(--color-border);
-            border-radius: 6px;
-            font-size: 14px;
-            background-color: var(--color-surface);
-            color: var(--color-text);
-        }
-
         /* Responsive */
         @media (max-width: 600px) {
             .header h1 {
@@ -505,19 +494,9 @@
             <div id="loginView" class="view active">
                 <div style="padding: 40px 20px; text-align: center;">
                     <div style="background: var(--color-surface); border-radius: 8px; padding: 30px; max-width: 400px; margin: 0 auto; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);">
-                        <h2 style="margin-bottom: 20px; color: var(--color-primary);">Anmelden</h2>
+                        <h2 style="margin-bottom: 10px; color: var(--color-primary);">PERDIS Dienstplan</h2>
+                        <p style="margin-bottom: 20px; font-size: 12px; color: var(--color-text-secondary);">Verkehrs-AG</p>
                         
-                        <div style="margin-bottom: 15px;">
-                            <label style="display: block; text-align: left; margin-bottom: 5px; font-size: 12px;">PERDIS Server</label>
-                            <select id="serverUrl">
-                                <option value="">-- Server wählen --</option>
-                                <option value="https://perdisweb.verkehrs-ag.de">Verkehrs-AG</option>
-                                <option value="https://perdis.regiobus.de">RegioBus</option>
-                                <option value="https://anwendungen.stadtwerke-bielefeld.de">Stadtwerke Bielefeld</option>
-                                <option value="https://perdis-info.icb-ffm.de">ICB Frankfurt</option>
-                            </select>
-                        </div>
-
                         <div style="margin-bottom: 15px;">
                             <input 
                                 type="text" 
@@ -593,7 +572,7 @@
                 <button class="theme-toggle" onclick="toggleTheme()">🌙 Darkmode</button>
                 <button class="theme-toggle" onclick="logout()" id="logoutBtn" style="display: none;">Abmelden</button>
             </div>
-            <div>PERDISWEB v1.0 - ECHTE Daten von PERDIS Server</div>
+            <div>PERDISWEB v1.0 - Live from Verkehrs-AG</div>
         </div>
     </div>
 
@@ -602,7 +581,6 @@
         let appState = {
             isLoggedIn: false,
             username: '',
-            serverUrl: '',
             roster: {},
             selectedDate: new Date(),
             currentMonth: new Date()
@@ -620,65 +598,62 @@
             clear: () => localStorage.clear()
         };
 
-        // ===== Real Login with Netlify Function =====
+        // ===== Real Login =====
         async function login() {
-            const serverUrl = document.getElementById('serverUrl').value;
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value.trim();
             const messageEl = document.getElementById('loginMessage');
 
-            if (!serverUrl || !username || !password) {
+            if (!username || !password) {
                 messageEl.className = 'message error';
-                messageEl.textContent = 'Alle Felder erforderlich';
+                messageEl.textContent = 'Benutzername und Passwort erforderlich';
                 return;
             }
 
-            messageEl.innerHTML = '<div class="spinner" style="width: 20px; height: 20px; display: inline-block;"></div>';
+            messageEl.innerHTML = '<div class="spinner" style="width: 20px; height: 20px; display: inline-block;"></div> Anmeldung wird verarbeitet...';
+            messageEl.className = '';
 
             try {
-                // Call Netlify Function (CORS Proxy)
+                // Call Netlify Function
                 const response = await fetch('/.netlify/functions/perdis-login', {
                     method: 'POST',
-                    body: JSON.stringify({
-                        serverUrl,
-                        username,
-                        password
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
                 });
 
                 const result = await response.json();
 
-                if (!response.ok || !result.success) {
+                if (!result.success) {
                     throw new Error(result.error || 'Anmeldung fehlgeschlagen');
                 }
 
-                // Speichere Session
+                // Success!
                 appState.isLoggedIn = true;
                 appState.username = username;
-                appState.serverUrl = serverUrl;
                 appState.roster = result.roster || {};
 
+                // Save session
                 StorageUtil.save('perdis_session', {
                     username,
-                    serverUrl,
                     timestamp: Date.now()
                 });
-
                 StorageUtil.save('perdis_roster', appState.roster);
 
-                // Zeige App
+                // Show app
                 document.getElementById('loginView').classList.remove('active');
                 document.getElementById('appViews').style.display = 'block';
                 document.getElementById('logoutBtn').style.display = 'block';
                 document.getElementById('headerUser').textContent = `Angemeldet als: ${username}`;
 
-                // Lade Screens
+                // Load data
                 loadTodaySchedule();
                 renderCalendar();
 
                 messageEl.className = 'message success';
                 messageEl.textContent = 'Erfolgreich angemeldet!';
+
             } catch (error) {
+                console.error('Login error:', error);
                 messageEl.className = 'message error';
                 messageEl.textContent = 'Fehler: ' + error.message;
             }
@@ -688,15 +663,18 @@
         function logout() {
             if (confirm('Wirklich abmelden?')) {
                 StorageUtil.clear();
-                appState.isLoggedIn = false;
-                appState.username = '';
-                appState.serverUrl = '';
+                appState = {
+                    isLoggedIn: false,
+                    username: '',
+                    roster: {},
+                    selectedDate: new Date(),
+                    currentMonth: new Date()
+                };
 
                 document.getElementById('loginView').classList.add('active');
                 document.getElementById('appViews').style.display = 'none';
                 document.getElementById('logoutBtn').style.display = 'none';
                 document.getElementById('headerUser').textContent = 'Nicht angemeldet';
-                document.getElementById('serverUrl').value = '';
                 document.getElementById('username').value = '';
                 document.getElementById('password').value = '';
             }
@@ -722,8 +700,8 @@
                     <div class="fahrt-item">
                         <div class="fahrt-line">${fahrt.line}</div>
                         <div class="fahrt-times">
-                            <div class="fahrt-time start">▶ ${fahrt.start}</div>
-                            <div class="fahrt-time end">■ ${fahrt.end}</div>
+                            <div class="fahrt-time start">\u25b6 ${fahrt.start}</div>
+                            <div class="fahrt-time end">\u25a0 ${fahrt.end}</div>
                         </div>
                         <div class="fahrt-ort">${fahrt.location}</div>
                     </div>
@@ -852,8 +830,8 @@
                     <div class="fahrt-item">
                         <div class="fahrt-line">${fahrt.line}</div>
                         <div class="fahrt-times">
-                            <div class="fahrt-time start">▶ ${fahrt.start}</div>
-                            <div class="fahrt-time end">■ ${fahrt.end}</div>
+                            <div class="fahrt-time start">\u25b6 ${fahrt.start}</div>
+                            <div class="fahrt-time end">\u25a0 ${fahrt.end}</div>
                         </div>
                         <div class="fahrt-ort">${fahrt.location}</div>
                     </div>
@@ -910,12 +888,12 @@
 
         // ===== PDF Functions =====
         function downloadPDF(dateStr) {
-            const pdfUrl = `${appState.serverUrl}/WebComm/shiprint.aspx?${dateStr}`;
+            const pdfUrl = `https://perdisweb.verkehrs-ag.de/WebComm/shiprint.aspx?${dateStr}`;
             window.open(pdfUrl, '_blank');
         }
 
         function sharePDF(dateStr) {
-            const pdfUrl = `${appState.serverUrl}/WebComm/shiprint.aspx?${dateStr}`;
+            const pdfUrl = `https://perdisweb.verkehrs-ag.de/WebComm/shiprint.aspx?${dateStr}`;
 
             if (navigator.share) {
                 navigator.share({
@@ -960,19 +938,17 @@
 
             const session = StorageUtil.load('perdis_session');
             if (session) {
-                appState.username = session.username;
-                appState.serverUrl = session.serverUrl;
-                
                 const roster = StorageUtil.load('perdis_roster');
                 if (roster) {
                     appState.isLoggedIn = true;
+                    appState.username = session.username;
                     appState.roster = roster;
-                    
+
                     document.getElementById('loginView').classList.remove('active');
                     document.getElementById('appViews').style.display = 'block';
                     document.getElementById('logoutBtn').style.display = 'block';
                     document.getElementById('headerUser').textContent = `Angemeldet als: ${appState.username}`;
-                    
+
                     loadTodaySchedule();
                     renderCalendar();
                 }
