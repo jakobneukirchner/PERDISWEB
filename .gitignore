@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.env.local
+.env.*.local
+
+# Build
+dist/
+build/
+.cache/
+
+# Runtime
+*.log
+.env
+.env.production
+
+# OS
+Thumbs.db
+.DS_Store
+*.sublime-workspace
+*.sublime-project
+
+# Testing
+.coverage
+.pytest_cache/
+
+# Netlify
+.netlify/
+.next/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Local sensitive data
+local-config.js
+secrets.json
+.credentials
