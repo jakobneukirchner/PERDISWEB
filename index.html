@@ -581,6 +581,7 @@
         let appState = {
             isLoggedIn: false,
             username: '',
+            session: '',
             roster: {},
             selectedDate: new Date(),
             currentMonth: new Date()
@@ -598,7 +599,7 @@
             clear: () => localStorage.clear()
         };
 
-        // ===== Real Login =====
+        // ===== Login =====
         async function login() {
             const username = document.getElementById('username').value.trim();
             const password = document.getElementById('password').value.trim();
@@ -614,11 +615,10 @@
             messageEl.className = '';
 
             try {
-                // Call Netlify Function
                 const response = await fetch('/.netlify/functions/perdis-login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
+                    body: JSON.stringify({ username, password, action: 'login' })
                 });
 
                 const result = await response.json();
@@ -627,25 +627,23 @@
                     throw new Error(result.error || 'Anmeldung fehlgeschlagen');
                 }
 
-                // Success!
                 appState.isLoggedIn = true;
                 appState.username = username;
+                appState.session = result.session;
                 appState.roster = result.roster || {};
 
-                // Save session
                 StorageUtil.save('perdis_session', {
                     username,
+                    session: result.session,
                     timestamp: Date.now()
                 });
                 StorageUtil.save('perdis_roster', appState.roster);
 
-                // Show app
                 document.getElementById('loginView').classList.remove('active');
                 document.getElementById('appViews').style.display = 'block';
                 document.getElementById('logoutBtn').style.display = 'block';
                 document.getElementById('headerUser').textContent = `Angemeldet als: ${username}`;
 
-                // Load data
                 loadTodaySchedule();
                 renderCalendar();
 
@@ -666,6 +664,7 @@
                 appState = {
                     isLoggedIn: false,
                     username: '',
+                    session: '',
                     roster: {},
                     selectedDate: new Date(),
                     currentMonth: new Date()
@@ -680,7 +679,7 @@
             }
         }
 
-        // ===== Today Schedule =====
+        // ===== Load Today Schedule =====
         function loadTodaySchedule() {
             const today = new Date().toISOString().split('T')[0];
             const todayData = appState.roster[today] || [];
@@ -700,8 +699,8 @@
                     <div class="fahrt-item">
                         <div class="fahrt-line">${fahrt.line}</div>
                         <div class="fahrt-times">
-                            <div class="fahrt-time start">\u25b6 ${fahrt.start}</div>
-                            <div class="fahrt-time end">\u25a0 ${fahrt.end}</div>
+                            <div class="fahrt-time start">▶ ${fahrt.start}</div>
+                            <div class="fahrt-time end">■ ${fahrt.end}</div>
                         </div>
                         <div class="fahrt-ort">${fahrt.location}</div>
                     </div>
@@ -718,7 +717,7 @@
             container.innerHTML = html;
         }
 
-        // ===== Roster View =====
+        // ===== Load Roster View =====
         function loadRosterView() {
             const container = document.getElementById('rosterContent');
             const dates = Object.keys(appState.roster).sort();
@@ -747,7 +746,7 @@
             container.innerHTML = html;
         }
 
-        // ===== Calendar =====
+        // ===== Render Calendar =====
         function renderCalendar() {
             const year = appState.currentMonth.getFullYear();
             const month = appState.currentMonth.getMonth();
@@ -807,7 +806,8 @@
             }
         }
 
-        function selectCalendarDate(dateStr) {
+        // ===== Select Calendar Date =====
+        async function selectCalendarDate(dateStr) {
             appState.selectedDate = new Date(dateStr);
             const selectedData = appState.roster[dateStr];
 
@@ -821,6 +821,25 @@
                 return;
             }
 
+            // Try to fetch detailed shift info
+            try {
+                const response = await fetch('/.netlify/functions/perdis-login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        action: 'shift',
+                        date: dateStr,
+                        password: appState.session
+                    })
+                });
+                const result = await response.json();
+                if (result.success && result.shifts && result.shifts.length > 0) {
+                    selectedData.splice(0, selectedData.length, ...result.shifts);
+                }
+            } catch (e) {
+                console.log('Shift fetch fallback to roster data');
+            }
+
             let html = '<div class="today-card">';
             html += `<div class="dienst-header">Dienste am ${formatDate(dateStr)}</div>`;
             html += '<div class="perlschnur">';
@@ -830,8 +849,8 @@
                     <div class="fahrt-item">
                         <div class="fahrt-line">${fahrt.line}</div>
                         <div class="fahrt-times">
-                            <div class="fahrt-time start">\u25b6 ${fahrt.start}</div>
-                            <div class="fahrt-time end">\u25a0 ${fahrt.end}</div>
+                            <div class="fahrt-time start">▶ ${fahrt.start}</div>
+                            <div class="fahrt-time end">■ ${fahrt.end}</div>
                         </div>
                         <div class="fahrt-ort">${fahrt.location}</div>
                     </div>
@@ -942,6 +961,7 @@
                 if (roster) {
                     appState.isLoggedIn = true;
                     appState.username = session.username;
+                    appState.session = session.session;
                     appState.roster = roster;
 
                     document.getElementById('loginView').classList.remove('active');
