@@ -1,397 +1,276 @@
-// ====== PERDISWEB Working Version ======
-// Lösung für CORS-Problem: Direkte HTML-Parsing statt HTTP-Requests
+/**
+ * PERDISWEB - Real PERDIS Server Integration
+ * Uses Netlify Functions as CORS proxy to fetch actual dienstplan data
+ * NO MOCK DATA - All data from real PERDIS server
+ */
 
-const STATE = {
-    isLoggedIn: false,
-    username: '',
-    password: '',
-    serverUrl: '',
-    rosterData: {},
-    selectedDate: new Date().toISOString().split('T')[0]
+const AppConfig = {
+    serverOptions: {
+        'verkehrs-ag': { name: 'Verkehrs-AG', url: 'https://perdisweb.verkehrs-ag.de' },
+        'regiobus': { name: 'RegioBus', url: 'https://perdis.regiobus.de' },
+        'bielefeld': { name: 'Stadtwerke Bielefeld', url: 'https://anwendungen.stadtwerke-bielefeld.de' },
+        'frankfurt': { name: 'ICB Frankfurt', url: 'https://perdis-info.icb-ffm.de' }
+    },
+    apiEndpoint: '/.netlify/functions/perdis-login'
 };
 
-// ===== Storage Utilities =====
-const Storage = {
-    encrypt: (text) => btoa(unescape(encodeURIComponent(text))),
-    decrypt: (encoded) => {
-        try {
-            return decodeURIComponent(escape(atob(encoded)));
-        } catch (e) {
-            return null;
-        }
-    },
-    save: (key, value) => {
-        try {
-            localStorage.setItem(key, Storage.encrypt(JSON.stringify(value)));
-            return true;
-        } catch (e) {
-            console.error('Storage error:', e);
-            return false;
-        }
-    },
-    load: (key) => {
-        try {
-            const data = localStorage.getItem(key);
-            if (!data) return null;
-            return JSON.parse(Storage.decrypt(data));
-        } catch (e) {
-            return null;
-        }
-    },
-    clear: () => localStorage.clear(),
-    remove: (key) => localStorage.removeItem(key)
-};
-
-// ===== Mock Roster Data (für Demo) =====
-const MOCK_ROSTER = {
-    today: [
-        { line: '5', start: '06:30', end: '08:45', location: 'Zentrum' },
-        { line: '12', start: '09:00', end: '13:15', location: 'Bahnhof' },
-        { line: '7', start: '14:00', end: '18:30', location: 'Markt' }
-    ],
-    future: [
-        { date: '+1', fahrten: [{ line: '3', start: '07:15', end: '11:00', location: 'Süd' }] },
-        { date: '+2', fahrten: [{ line: '9', start: '13:00', end: '17:45', location: 'West' }] },
-        { date: '+3', fahrten: [{ line: '1', start: '06:00', end: '14:30', location: 'Nord' }] },
-        { date: '+4', fahrten: [] },
-        { date: '+5', fahrten: [{ line: '2', start: '08:30', end: '16:45', location: 'Ost' }] }
-    ]
-};
-
-// ===== Navigation =====
-function setupNavigation() {
-    const tabs = document.querySelectorAll('.nav-tab');
-    tabs.forEach(tab => {
-        tab.addEventListener('click', (e) => {
-            e.preventDefault();
-            const screenId = tab.dataset.screen;
-            
-            // Remove active from all
-            tabs.forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-            
-            // Add active to clicked
-            tab.classList.add('active');
-            const screen = document.getElementById(screenId);
-            if (screen) {
-                screen.classList.add('active');
-                
-                // Load content if needed
-                if (screenId === 'mein-tag') {
-                    loadTodaySchedule();
-                } else if (screenId === 'dienstplan') {
-                    loadDienstplanOverview();
-                } else if (screenId === 'tageswahl') {
-                    setupDatePicker();
-                }
-            }
-        });
-    });
-}
-
-// ===== Login Handler =====
-async function handleLogin(event) {
-    event.preventDefault();
-    
-    const username = document.getElementById('username').value;
-    const password = document.getElementById('password').value;
-    const serverUrl = document.getElementById('serverSelect').value;
-    const loginLoading = document.getElementById('loginLoading');
-    const loginError = document.getElementById('loginError');
-    const submitBtn = event.target.querySelector('button[type="submit"]');
-    
-    if (!username || !password || !serverUrl) {
-        loginError.textContent = 'Alle Felder sind erforderlich';
-        loginError.style.display = 'block';
-        return;
+class Perdisweb {
+    constructor() {
+        this.appState = {
+            isLoggedIn: false,
+            username: '',
+            serverUrl: '',
+            roster: {},
+            currentDate: new Date()
+        };
+        this.init();
     }
-    
-    loginLoading.style.display = 'block';
-    loginError.style.display = 'none';
-    submitBtn.disabled = true;
-    
-    try {
-        // Simuliere Login (in echter Implementation würde hier der CORS-Proxy arbeiten)
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Speichere Credentials
-        STATE.username = username;
-        STATE.password = password;
-        STATE.serverUrl = serverUrl;
-        STATE.isLoggedIn = true;
-        
-        Storage.save('perdis_user', {
-            username,
-            serverUrl,
+
+    init() {
+        this.setupEventListeners();
+        this.loadSavedSession();
+        this.renderServerOptions();
+    }
+
+    setupEventListeners() {
+        document.getElementById('loginForm').addEventListener('submit', (e) => this.handleLogin(e));
+        document.getElementById('logoutBtn').addEventListener('click', () => this.logout());
+        document.querySelectorAll('.nav-tab').forEach(tab => {
+            tab.addEventListener('click', (e) => this.switchScreen(e.target.dataset.screen));
+        });
+        document.getElementById('showDateBtn').addEventListener('click', () => this.showDateContent());
+        document.getElementById('closePdfBtn').addEventListener('click', () => this.closePdfModal());
+    }
+
+    renderServerOptions() {
+        const select = document.getElementById('serverSelect');
+        Object.entries(AppConfig.serverOptions).forEach(([key, config]) => {
+            const option = document.createElement('option');
+            option.value = config.url;
+            option.textContent = config.name;
+            select.appendChild(option);
+        });
+    }
+
+    async handleLogin(event) {
+        event.preventDefault();
+
+        const serverUrl = document.getElementById('serverSelect').value;
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+
+        if (!serverUrl || !username || !password) {
+            this.showError('loginError', 'Alle Felder erforderlich');
+            return;
+        }
+
+        this.showLoading('loginLoading', true);
+
+        try {
+            // Call real PERDIS login via Netlify Function proxy
+            const response = await fetch(AppConfig.apiEndpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    serverUrl,
+                    username,
+                    password
+                })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Login fehlgeschlagen');
+            }
+
+            // Login successful - save session
+            this.appState.isLoggedIn = true;
+            this.appState.username = username;
+            this.appState.serverUrl = serverUrl;
+            this.appState.roster = result.roster || {};
+
+            this.saveSession();
+            this.showLoginScreen(false);
+            this.renderAllScreens();
+
+        } catch (error) {
+            console.error('Login error:', error);
+            this.showError('loginError', error.message);
+        } finally {
+            this.showLoading('loginLoading', false);
+        }
+    }
+
+    saveSession() {
+        localStorage.setItem('perdis_session', JSON.stringify({
+            username: this.appState.username,
+            serverUrl: this.appState.serverUrl,
             timestamp: Date.now()
-        });
-        
-        // Lade Mock-Daten
-        await loadMockRoster();
-        
-        // Zeige App
-        showApp();
-        
-        loginLoading.style.display = 'none';
-        submitBtn.disabled = false;
-    } catch (error) {
-        loginError.textContent = 'Anmeldung fehlgeschlagen: ' + error.message;
-        loginError.style.display = 'block';
-        loginLoading.style.display = 'none';
-        submitBtn.disabled = false;
-        STATE.isLoggedIn = false;
+        }));
+        localStorage.setItem('perdis_roster', JSON.stringify(this.appState.roster));
     }
-}
 
-// ===== Mock Roster Loading =====
-async function loadMockRoster() {
-    const today = new Date();
-    STATE.rosterData = {};
-    
-    // Heute
-    STATE.rosterData[today.toISOString().split('T')[0]] = MOCK_ROSTER.today;
-    
-    // Zukünftige Tage
-    MOCK_ROSTER.future.forEach(item => {
-        const date = new Date(today);
-        const daysToAdd = parseInt(item.date.replace('+', ''));
-        date.setDate(date.getDate() + daysToAdd);
-        const dateStr = date.toISOString().split('T')[0];
-        STATE.rosterData[dateStr] = item.fahrten;
-    });
-}
+    loadSavedSession() {
+        const session = localStorage.getItem('perdis_session');
+        if (session) {
+            const data = JSON.parse(session);
+            // Session valid for 30 days
+            if (Date.now() - data.timestamp < 30 * 24 * 60 * 60 * 1000) {
+                this.appState.username = data.username;
+                this.appState.serverUrl = data.serverUrl;
+                this.appState.isLoggedIn = true;
 
-// ===== Show App UI =====
-function showApp() {
-    document.getElementById('loginScreen').classList.remove('active');
-    document.getElementById('mainApp').style.display = 'flex';
-    document.getElementById('logoutBtn').style.display = 'inline-block';
-    document.getElementById('userDisplay').textContent = `Angemeldet: ${STATE.username}`;
-    
-    setupNavigation();
-    loadTodaySchedule();
-}
+                const roster = localStorage.getItem('perdis_roster');
+                if (roster) this.appState.roster = JSON.parse(roster);
 
-// ===== Load Today Schedule =====
-function loadTodaySchedule() {
-    const today = new Date().toISOString().split('T')[0];
-    const content = document.getElementById('meinTagContent');
-    const fahrten = STATE.rosterData[today] || [];
-    
-    if (fahrten.length === 0) {
-        content.innerHTML = '<div class="no-data">Heute keine Dienste geplant</div>';
-        return;
-    }
-    
-    let html = `<div class="dienst-header">Dienste heute (${formatDate(today)})</div>`;
-    html += '<div class="perlschnur">';
-    
-    fahrten.forEach(fahrt => {
-        html += `
-            <div class="fahrtstop">
-                <div class="fahrtstop-line">${fahrt.line}</div>
-                <div class="fahrtstop-divider"></div>
-                <div class="fahrtstop-times">
-                    <div class="fahrtstop-time">
-                        <span class="fahrtstop-time-label">Abfahrt</span>
-                        <span class="fahrtstop-time-value">${fahrt.start}</span>
-                    </div>
-                    <div class="fahrtstop-divider" style="height: 24px;"></div>
-                    <div class="fahrtstop-time">
-                        <span class="fahrtstop-time-label">Ankunft</span>
-                        <span class="fahrtstop-time-value">${fahrt.end}</span>
-                    </div>
-                </div>
-                <div class="fahrtstop-ort">${fahrt.location}</div>
-            </div>
-        `;
-    });
-    
-    html += '</div>';
-    html += `
-        <div class="action-buttons">
-            <button class="btn-primary" onclick="downloadPDF('${today}')">PDF downloaden</button>
-            <button class="btn-secondary" onclick="sharePDF('${today}')">Teilen</button>
-        </div>
-    `;
-    
-    content.innerHTML = html;
-}
-
-// ===== Load Dienstplan Overview =====
-function loadDienstplanOverview() {
-    const content = document.getElementById('dienstplanCalendar');
-    const dates = Object.keys(STATE.rosterData).sort();
-    
-    if (dates.length === 0) {
-        content.innerHTML = '<div class="no-data">Keine Dienstpläne vorhanden</div>';
-        return;
-    }
-    
-    let html = '<div class="calendar-container">';
-    
-    dates.forEach(date => {
-        const fahrten = STATE.rosterData[date];
-        const lines = fahrten.map(f => f.line).join(', ');
-        
-        html += `
-            <div class="calendar-day clickable" onclick="selectDateFromRoster('${date}')">
-                <div class="calendar-day-date">${formatDate(date)}</div>
-                <div class="calendar-day-dienste">Linien: ${lines || 'keine'}</div>
-                <div class="calendar-day-count">${fahrten.length} Fahrt(en)</div>
-            </div>
-        `;
-    });
-    
-    html += '</div>';
-    content.innerHTML = html;
-}
-
-// ===== Date Picker Setup =====
-function setupDatePicker() {
-    const datePicker = document.getElementById('datePicker');
-    const today = new Date();
-    datePicker.valueAsDate = today;
-    datePicker.min = today.toISOString().split('T')[0];
-    
-    const maxDate = new Date();
-    maxDate.setDate(maxDate.getDate() + 365);
-    datePicker.max = maxDate.toISOString().split('T')[0];
-}
-
-// ===== Select Date from Roster =====
-function selectDateFromRoster(dateStr) {
-    STATE.selectedDate = dateStr;
-    const content = document.getElementById('tageswahlContent');
-    const fahrten = STATE.rosterData[dateStr] || [];
-    
-    if (fahrten.length === 0) {
-        content.innerHTML = `<div class="no-data">Keine Dienste am ${formatDate(dateStr)}</div>`;
-        return;
-    }
-    
-    let html = `<div class="dienst-header">Dienste am ${formatDate(dateStr)}</div>`;
-    html += '<div class="perlschnur">';
-    
-    fahrten.forEach(fahrt => {
-        html += `
-            <div class="fahrtstop">
-                <div class="fahrtstop-line">${fahrt.line}</div>
-                <div class="fahrtstop-divider"></div>
-                <div class="fahrtstop-times">
-                    <div class="fahrtstop-time">
-                        <span class="fahrtstop-time-label">Abfahrt</span>
-                        <span class="fahrtstop-time-value">${fahrt.start}</span>
-                    </div>
-                    <div class="fahrtstop-divider" style="height: 24px;"></div>
-                    <div class="fahrtstop-time">
-                        <span class="fahrtstop-time-label">Ankunft</span>
-                        <span class="fahrtstop-time-value">${fahrt.end}</span>
-                    </div>
-                </div>
-                <div class="fahrtstop-ort">${fahrt.location}</div>
-            </div>
-        `;
-    });
-    
-    html += '</div>';
-    html += `
-        <div class="action-buttons">
-            <button class="btn-primary" onclick="downloadPDF('${dateStr}')">PDF downloaden</button>
-            <button class="btn-secondary" onclick="sharePDF('${dateStr}')">Teilen</button>
-        </div>
-    `;
-    
-    content.innerHTML = html;
-}
-
-// ===== Show Date Button =====
-document.addEventListener('DOMContentLoaded', () => {
-    const showDateBtn = document.getElementById('showDateBtn');
-    if (showDateBtn) {
-        showDateBtn.addEventListener('click', () => {
-            const date = document.getElementById('datePicker').value;
-            if (date) {
-                selectDateFromRoster(date);
+                this.showLoginScreen(false);
+                this.renderAllScreens();
             }
-        });
+        }
     }
-});
 
-// ===== PDF Functions =====
-function downloadPDF(dateStr) {
-    // In echter Implementation würde hier ein CORS-Proxy-Aufruf erfolgen
-    const pdfUrl = `${STATE.serverUrl}/WebComm/shiprint.aspx?${dateStr}`;
-    
-    // Fallback: Download-Dialog öffnen
-    const a = document.createElement('a');
-    a.href = pdfUrl;
-    a.download = `dienstplan_${dateStr}.pdf`;
-    a.target = '_blank';
-    a.click();
-}
+    logout() {
+        if (confirm('Wirklich abmelden?')) {
+            localStorage.clear();
+            this.appState = {
+                isLoggedIn: false,
+                username: '',
+                serverUrl: '',
+                roster: {},
+                currentDate: new Date()
+            };
+            this.showLoginScreen(true);
+            document.getElementById('loginForm').reset();
+        }
+    }
 
-function sharePDF(dateStr) {
-    if (navigator.share) {
-        navigator.share({
-            title: 'PERDIS Dienstplan',
-            text: `Mein Dienstplan vom ${formatDate(dateStr)}`,
-            url: window.location.href
-        }).catch(err => console.log('Share failed:', err));
-    } else {
-        alert('Teilen wird von diesem Browser nicht unterstützt');
+    showLoginScreen(show) {
+        document.getElementById('loginScreen').classList.toggle('active', show);
+        document.getElementById('mainApp').style.display = show ? 'none' : 'flex';
+        document.getElementById('logoutBtn').style.display = show ? 'none' : 'block';
+        document.getElementById('userDisplay').textContent = show ? 'Nicht angemeldet' : `Angemeldet als: ${this.appState.username}`;
+    }
+
+    switchScreen(screenName) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+        document.getElementById(screenName).classList.add('active');
+        event.target.classList.add('active');
+    }
+
+    renderAllScreens() {
+        this.renderMeinTag();
+        this.renderDienstplan();
+    }
+
+    renderMeinTag() {
+        const today = new Date().toISOString().split('T')[0];
+        const todayData = this.appState.roster[today] || [];
+        const container = document.getElementById('meinTagContent');
+
+        if (todayData.length === 0) {
+            container.innerHTML = '<p style="text-align: center; padding: 30px; color: var(--color-text-secondary);">Heute keine Dienste geplant</p>';
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="dienst-card">
+                <div class="dienst-header">${this.formatDate(today)}</div>
+                ${todayData.map(fahrt => this.renderFahrt(fahrt, today)).join('')}
+                <button class="btn-primary" onclick="app.downloadPDF('${today}')">PDF downloaden</button>
+            </div>
+        `;
+    }
+
+    renderDienstplan() {
+        const container = document.getElementById('dienstplanCalendar');
+        const dates = Object.keys(this.appState.roster).sort();
+
+        if (dates.length === 0) {
+            container.innerHTML = '<p>Keine Dienstpläne vorhanden</p>';
+            return;
+        }
+
+        container.innerHTML = dates.map(date => {
+            const fahrten = this.appState.roster[date];
+            const summary = fahrten.map(f => f.line).join(', ');
+            return `
+                <div class="dienst-card dienst-day" onclick="app.showDateContent('${date}')">
+                    <div class="dienst-day-date">${this.formatDate(date)}</div>
+                    <div class="dienst-day-title">Linien: ${summary}</div>
+                    <div class="dienst-day-summary">${fahrten.length} Fahrt(en)</div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    renderFahrt(fahrt, dateStr) {
+        return `
+            <div class="fahrt-item">
+                <div class="fahrt-line">${fahrt.line}</div>
+                <div class="fahrt-info">
+                    <div class="fahrt-time">▶ ${fahrt.start}</div>
+                    <div class="fahrt-time">■ ${fahrt.end}</div>
+                </div>
+                <div class="fahrt-location">${fahrt.location}</div>
+            </div>
+        `;
+    }
+
+    showDateContent(dateStr = null) {
+        if (!dateStr) {
+            dateStr = document.getElementById('datePicker').value;
+            if (!dateStr) return;
+        }
+
+        const data = this.appState.roster[dateStr] || [];
+        const container = document.getElementById('tageswahlContent');
+
+        if (data.length === 0) {
+            container.innerHTML = `<p>Keine Dienste am ${this.formatDate(dateStr)}</p>`;
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="dienst-card">
+                <div class="dienst-header">${this.formatDate(dateStr)}</div>
+                ${data.map(fahrt => this.renderFahrt(fahrt, dateStr)).join('')}
+                <button class="btn-primary" onclick="app.downloadPDF('${dateStr}')">PDF downloaden</button>
+            </div>
+        `;
+    }
+
+    downloadPDF(dateStr) {
+        const pdfUrl = `${this.appState.serverUrl}/WebComm/shiprint.aspx?${dateStr}`;
+        window.open(pdfUrl, '_blank');
+    }
+
+    formatDate(dateStr) {
+        const date = new Date(dateStr + 'T00:00:00');
+        const days = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+        const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        return `${days[date.getDay()]}, ${date.getDate()}. ${months[date.getMonth()]} ${date.getFullYear()}`;
+    }
+
+    showError(elementId, message) {
+        const el = document.getElementById(elementId);
+        el.textContent = message;
+        el.style.display = 'block';
+        setTimeout(() => el.style.display = 'none', 5000);
+    }
+
+    showLoading(elementId, show) {
+        document.getElementById(elementId).style.display = show ? 'block' : 'none';
+    }
+
+    closePdfModal() {
+        document.getElementById('pdfModal').style.display = 'none';
     }
 }
 
-// ===== Logout =====
-function logout() {
-    if (confirm('Wirklich abmelden? Alle Daten werden gelöscht.')) {
-        STATE.isLoggedIn = false;
-        STATE.username = '';
-        STATE.password = '';
-        STATE.serverUrl = '';
-        STATE.rosterData = {};
-        
-        Storage.clear();
-        
-        document.getElementById('loginScreen').classList.add('active');
-        document.getElementById('mainApp').style.display = 'none';
-        document.getElementById('logoutBtn').style.display = 'none';
-        document.getElementById('userDisplay').textContent = 'Nicht angemeldet';
-        document.getElementById('loginForm').reset();
-    }
-}
-
-// ===== Format Date =====
-function formatDate(dateStr) {
-    const date = new Date(dateStr + 'T00:00:00');
-    const days = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = date.getFullYear();
-    
-    return `${days[date.getDay()]}, ${day}.${month}.${year}`;
-}
-
-// ===== Event Listeners =====
+// Initialize app on page load
+let app;
 document.addEventListener('DOMContentLoaded', () => {
-    const logoutBtn = document.getElementById('logoutBtn');
-    if (logoutBtn) {
-        logoutBtn.addEventListener('click', logout);
-    }
-    
-    // Restore session
-    const saved = Storage.load('perdis_user');
-    if (saved) {
-        STATE.username = saved.username;
-        STATE.serverUrl = saved.serverUrl;
-        STATE.isLoggedIn = true;
-        loadMockRoster().then(() => showApp());
-    }
+    app = new Perdisweb();
 });
-
-window.handleLogin = handleLogin;
-window.logout = logout;
-window.downloadPDF = downloadPDF;
-window.sharePDF = sharePDF;
-window.selectDateFromRoster = selectDateFromRoster;
