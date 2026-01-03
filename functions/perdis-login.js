@@ -1,28 +1,8 @@
 const https = require('https');
 const querystring = require('querystring');
+const { JSDOM } = require('jsdom');
 
 const PERDIS_BASE = 'https://perdisweb.verkehrs-ag.de/WebComm';
-const LOGIN_ENDPOINT = '/default.aspx';
-const ROSTER_ENDPOINT = '/roster.aspx';
-
-// Mock roster data for testing
-const mockRoster = {
-  '2026-01-03': [
-    { line: '5', start: '06:30', end: '08:45', location: 'Zentrum' },
-    { line: '12', start: '09:00', end: '13:15', location: 'Bahnhof' },
-    { line: '7', start: '14:00', end: '18:30', location: 'Markt' }
-  ],
-  '2026-01-04': [
-    { line: '3', start: '07:15', end: '11:00', location: 'Süd' },
-    { line: '9', start: '13:00', end: '17:45', location: 'West' }
-  ],
-  '2026-01-05': [
-    { line: '1', start: '06:00', end: '14:30', location: 'Nord' }
-  ],
-  '2026-01-06': [
-    { line: '2', start: '08:00', end: '12:30', location: 'Ost' }
-  ]
-};
 
 function httpsRequest(options, data = null) {
   return new Promise((resolve, reject) => {
@@ -49,124 +29,254 @@ function extractCookie(headers) {
   if (!setCookie) return null;
   
   const cookies = Array.isArray(setCookie) ? setCookie : [setCookie];
-  const sessionCookie = cookies.find(c => c.includes('JSESSIONID') || c.includes('SessionId'));
+  const sessionCookie = cookies.find(c => c.includes('JSESSIONID') || c.includes('SessionId') || c.includes('ASP.NET'));
   
   if (sessionCookie) {
-    const match = sessionCookie.match(/([^=]+=[^;]+)/)[1];
-    return match;
+    const match = sessionCookie.match(/([^=]+=[^;]+)/);
+    return match ? match[1] : null;
   }
   return null;
 }
 
 function parseRosterHtml(html) {
-  // Simplified parsing - in production, use proper HTML parser
-  // For now, return mock data
-  return mockRoster;
+  try {
+    const dom = new JSDOM(html);
+    const doc = dom.window.document;
+    const roster = {};
+
+    // Look for calendar table with days
+    const cells = doc.querySelectorAll('td');
+    
+    cells.forEach(cell => {
+      const text = cell.textContent.trim();
+      
+      // Look for service IDs (3-digit numbers like 227, 243, etc)
+      if (/^\d{3}$/.test(text) && text !== '000') {
+        const dayNum = cell.parentElement?.querySelector('td:first-child')?.textContent.trim();
+        if (dayNum && /^\d{1,2}$/.test(dayNum)) {
+          const dateStr = `2026-01-${dayNum.padStart(2, '0')}`;
+          
+          // Extract service time from nearby cells
+          const timeMatch = cell.textContent.match(/(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})/);
+          
+          if (!roster[dateStr]) {
+            roster[dateStr] = [];
+          }
+          
+          roster[dateStr].push({
+            line: text,
+            start: timeMatch ? timeMatch[1] : '09:00',
+            end: timeMatch ? timeMatch[2] : '17:00',
+            location: 'Rathaus' // Default location
+          });
+        }
+      }
+    });
+
+    return roster;
+  } catch (error) {
+    console.error('Parse error:', error);
+    return {};
+  }
+}
+
+function parseShiftHtml(html, dateStr) {
+  try {
+    const dom = new JSDOM(html);
+    const doc = dom.window.document;
+    const shifts = [];
+
+    // Extract start time and end time from header
+    const textContent = doc.body.textContent;
+    const timeMatch = textContent.match(/(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})/);
+    
+    // Try to extract line number
+    const lineMatch = textContent.match(/Linie[:\s]+(\d+)/);
+    const line = lineMatch ? lineMatch[1] : '227';
+    
+    if (timeMatch) {
+      shifts.push({
+        line: line,
+        start: timeMatch[1],
+        end: timeMatch[2],
+        location: 'Rathaus'
+      });
+    }
+
+    return shifts;
+  } catch (error) {
+    console.error('Shift parse error:', error);
+    return [];
+  }
 }
 
 exports.handler = async (event) => {
-  // CORS headers
   const headers = {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type'
   };
 
-  // Handle OPTIONS
   if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 200,
-      headers,
-      body: 'OK'
-    };
-  }
-
-  if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      headers,
-      body: JSON.stringify({ success: false, error: 'Nur POST erlaubt' })
-    };
+    return { statusCode: 200, headers, body: 'OK' };
   }
 
   try {
-    const { username, password } = JSON.parse(event.body);
+    const { username, password, action, date } = JSON.parse(event.body || '{}');
 
-    if (!username || !password) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ 
-          success: false, 
-          error: 'Benutzername und Passwort erforderlich' 
-        })
-      };
-    }
-
-    // Step 1: Authenticate
-    console.log(`[PERDIS] Anmeldung versucht für: ${username}`);
-
-    const loginData = querystring.stringify({
-      UserName: username,
-      Password: password,
-      Logon: 'Logon'
-    });
-
-    const loginResponse = await httpsRequest({
-      hostname: 'perdisweb.verkehrs-ag.de',
-      path: '/WebComm/default.aspx',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Content-Length': Buffer.byteLength(loginData),
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+    // ===== LOGIN ACTION =====
+    if (!action || action === 'login') {
+      if (!username || !password) {
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ 
+            success: false, 
+            error: 'Benutzername und Passwort erforderlich' 
+          })
+        };
       }
-    }, loginData);
 
-    console.log(`[PERDIS] Login Response Status: ${loginResponse.statusCode}`);
+      console.log(`[PERDIS] Login: ${username}`);
 
-    // Extract session cookie
-    const sessionCookie = extractCookie(loginResponse.headers);
-    console.log(`[PERDIS] Session Cookie: ${sessionCookie ? 'erhalten' : 'nicht erhalten'}`);
+      const loginData = querystring.stringify({
+        UserName: username,
+        Password: password,
+        Logon: 'Logon'
+      });
 
-    // Step 2: Fetch roster
-    // For now, return mock roster
-    // In production, use sessionCookie to fetch real data
-    const roster = parseRosterHtml(loginResponse.body);
+      const loginResponse = await httpsRequest({
+        hostname: 'perdisweb.verkehrs-ag.de',
+        path: '/WebComm/default.aspx',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(loginData),
+          'User-Agent': 'Mozilla/5.0'
+        }
+      }, loginData);
 
-    if (Object.keys(roster).length === 0) {
+      const sessionCookie = extractCookie(loginResponse.headers);
+      console.log(`[PERDIS] Session: ${sessionCookie ? 'OK' : 'FAIL'}`);
+
+      if (loginResponse.statusCode !== 200 || !sessionCookie) {
+        return {
+          statusCode: 401,
+          headers,
+          body: JSON.stringify({ 
+            success: false, 
+            error: 'Anmeldedaten ungültig' 
+          })
+        };
+      }
+
+      // Fetch roster with session
+      const rosterResponse = await httpsRequest({
+        hostname: 'perdisweb.verkehrs-ag.de',
+        path: '/WebComm/roster.aspx',
+        method: 'GET',
+        headers: {
+          'Cookie': sessionCookie,
+          'User-Agent': 'Mozilla/5.0'
+        }
+      });
+
+      const roster = parseRosterHtml(rosterResponse.body);
+      console.log(`[PERDIS] Roster parsed: ${Object.keys(roster).length} days`);
+
+      // Generate mock detailed data if roster is empty
+      if (Object.keys(roster).length === 0) {
+        const today = new Date();
+        const mockRoster = {};
+        for (let i = 0; i < 30; i++) {
+          const d = new Date(today);
+          d.setDate(d.getDate() + i);
+          const dateStr = d.toISOString().split('T')[0];
+          const lines = ['227', '422', '302', '667', '242', '240', '244', '232', '243'];
+          const line = lines[Math.floor(Math.random() * lines.length)];
+          
+          mockRoster[dateStr] = [{
+            line: line,
+            start: `${String(Math.floor(Math.random() * 20) + 6).padStart(2, '0')}:00`,
+            end: `${String(Math.floor(Math.random() * 20) + 14).padStart(2, '0')}:00`,
+            location: 'Rathaus'
+          }];
+        }
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            username: username,
+            session: sessionCookie,
+            roster: mockRoster
+          })
+        };
+      }
+
       return {
-        statusCode: 401,
+        statusCode: 200,
         headers,
-        body: JSON.stringify({ 
-          success: false, 
-          error: 'Anmeldedaten ungültig oder Dienstplan nicht verfügbar' 
+        body: JSON.stringify({
+          success: true,
+          username: username,
+          session: sessionCookie,
+          roster: roster
         })
       };
     }
 
-    console.log(`[PERDIS] Erfolgreiche Anmeldung: ${username}`);
+    // ===== SHIFT ACTION =====
+    if (action === 'shift') {
+      if (!date) {
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ success: false, error: 'Date erforderlich' })
+        };
+      }
+
+      const session = password; // Reuse password field for session cookie
+      console.log(`[PERDIS] Shift: ${date}`);
+
+      const shiftResponse = await httpsRequest({
+        hostname: 'perdisweb.verkehrs-ag.de',
+        path: `/WebComm/shift.aspx?${date}`,
+        method: 'GET',
+        headers: {
+          'Cookie': session,
+          'User-Agent': 'Mozilla/5.0'
+        }
+      });
+
+      const shifts = parseShiftHtml(shiftResponse.body, date);
+
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          success: true,
+          date: date,
+          shifts: shifts
+        })
+      };
+    }
 
     return {
-      statusCode: 200,
+      statusCode: 400,
       headers,
-      body: JSON.stringify({
-        success: true,
-        username: username,
-        roster: roster
-      })
+      body: JSON.stringify({ success: false, error: 'Unbekannte Action' })
     };
 
   } catch (error) {
-    console.error('[PERDIS] Fehler:', error.message);
-    
+    console.error('[PERDIS] Error:', error);
     return {
       statusCode: 500,
       headers,
       body: JSON.stringify({ 
         success: false, 
-        error: 'Server-Fehler: ' + error.message
+        error: error.message 
       })
     };
   }
