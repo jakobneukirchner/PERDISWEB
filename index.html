@@ -14,7 +14,10 @@
         <header class="header">
             <div class="header-content">
                 <h1 class="logo">PERDISWEB</h1>
-                <button class="btn-logout" id="logoutBtn" style="display: none;">Abmelden</button>
+                <div class="header-right">
+                    <span id="userDisplay" class="user-info">Nicht angemeldet</span>
+                    <button class="btn-logout" id="logoutBtn" style="display: none;">Abmelden</button>
+                </div>
             </div>
         </header>
 
@@ -22,98 +25,102 @@
         <div id="loginScreen" class="screen active">
             <div class="login-container">
                 <div class="login-card">
-                    <h2>PERDIS Login</h2>
-                    <form id="loginForm">
+                    <h2>PERDIS Dienstplan Login</h2>
+                    <div class="login-info">Geben Sie Ihre PERDIS-Anmeldedaten ein</div>
+                    
+                    <form id="loginForm" onsubmit="handleLogin(event)">
                         <div class="form-group">
-                            <label for="username">Benutzername</label>
-                            <input type="text" id="username" placeholder="Benutzername" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="password">Passwort</label>
-                            <input type="password" id="password" placeholder="Passwort" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="perdisUrl">PERDIS URL</label>
-                            <select id="perdisUrl" required>
-                                <option value="">-- URL wählen --</option>
+                            <label for="serverSelect">PERDIS Server</label>
+                            <select id="serverSelect" required>
+                                <option value="">-- Server wählen --</option>
                                 <option value="https://perdisweb.verkehrs-ag.de">Verkehrs-AG</option>
                                 <option value="https://perdis.regiobus.de">RegioBus</option>
                                 <option value="https://anwendungen.stadtwerke-bielefeld.de">Stadtwerke Bielefeld</option>
                                 <option value="https://perdis-info.icb-ffm.de">ICB Frankfurt</option>
                             </select>
                         </div>
+
+                        <div class="form-group">
+                            <label for="username">Benutzername</label>
+                            <input type="text" id="username" placeholder="Benutzername" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="password">Passwort</label>
+                            <input type="password" id="password" placeholder="Passwort" required>
+                        </div>
+
                         <button type="submit" class="btn-primary btn-full">Anmelden</button>
                     </form>
+
                     <div id="loginError" class="error-message" style="display: none;"></div>
-                    <div id="loginLoading" class="loading" style="display: none;">Anmelden...</div>
+                    <div id="loginLoading" class="loading" style="display: none;">Anmeldung wird verarbeitet...</div>
                 </div>
             </div>
         </div>
 
-        <!-- Main Navigation -->
-        <nav class="nav-tabs" id="navTabs" style="display: none;">
-            <button class="nav-tab active" data-screen="mein-tag">Mein Tag</button>
-            <button class="nav-tab" data-screen="dienstplan">Dienstplan</button>
-            <button class="nav-tab" data-screen="tageswahl">Tageswahl</button>
-        </nav>
+        <!-- Main App -->
+        <div id="mainApp" style="display: none; flex: 1; display: flex; flex-direction: column;">
+            <!-- Navigation -->
+            <nav class="nav-tabs" id="navTabs">
+                <button class="nav-tab active" data-screen="mein-tag">Mein Tag</button>
+                <button class="nav-tab" data-screen="dienstplan">Dienstplan</button>
+                <button class="nav-tab" data-screen="tageswahl">Tageswahl</button>
+            </nav>
 
-        <!-- Mein Tag Screen -->
-        <div id="mein-tag" class="screen">
-            <div class="screen-content">
-                <h2>Mein heutiger Tag</h2>
-                <div id="meinTagContent" class="dienstplan-container">
-                    <div class="loading">Laden...</div>
+            <!-- Content Area -->
+            <div class="content-area">
+                <!-- Mein Tag -->
+                <div id="mein-tag" class="screen active">
+                    <div class="screen-content">
+                        <h2>Mein heutiger Dienstplan</h2>
+                        <div id="meinTagContent" class="dienstplan-container">
+                            <div class="loading">Dienstplan wird geladen...</div>
+                        </div>
+                    </div>
                 </div>
-            </div>
-        </div>
 
-        <!-- Dienstplan Screen -->
-        <div id="dienstplan" class="screen">
-            <div class="screen-content">
-                <h2>Dienstplan</h2>
-                <div class="dienstplan-info">
-                    <p>Klicken Sie auf einen Tag, um ihn anzuzeigen</p>
+                <!-- Dienstplan Kalender -->
+                <div id="dienstplan" class="screen">
+                    <div class="screen-content">
+                        <h2>Dienstplan Übersicht</h2>
+                        <div id="dienstplanCalendar" class="dienstplan-container">
+                            <div class="loading">Daten werden geladen...</div>
+                        </div>
+                    </div>
                 </div>
-                <div id="dienstplanCalendar" class="calendar-container">
-                    <div class="loading">Laden...</div>
-                </div>
-            </div>
-        </div>
 
-        <!-- Tageswahl Screen -->
-        <div id="tageswahl" class="screen">
-            <div class="screen-content">
-                <h2>Tageswahl</h2>
-                <div class="date-picker-container">
-                    <input type="date" id="datePicker" class="date-input">
-                    <button class="btn-primary" id="showDateBtn">Anzeigen</button>
-                </div>
-                <div id="tageswahlContent" class="dienstplan-container">
-                    <!-- Inhalt wird hier eingefügt -->
-                </div>
-            </div>
-        </div>
-
-        <!-- PDF Viewer Modal -->
-        <div id="pdfModal" class="modal" style="display: none;">
-            <div class="modal-content">
-                <button class="modal-close" id="closePdfBtn">&times;</button>
-                <h3 id="pdfTitle">Dienstplan</h3>
-                <div class="pdf-viewer-container">
-                    <iframe id="pdfViewer" src="" style="width: 100%; height: 500px; border: none;"></iframe>
-                </div>
-                <div class="modal-actions">
-                    <button class="btn-secondary" id="downloadPdfBtn">Download</button>
-                    <button class="btn-primary" id="sharePdfBtn">Teilen</button>
+                <!-- Tageswahl -->
+                <div id="tageswahl" class="screen">
+                    <div class="screen-content">
+                        <h2>Tageswahl</h2>
+                        <div class="date-picker-container">
+                            <input type="date" id="datePicker" class="date-input">
+                            <button class="btn-primary" id="showDateBtn">Anzeigen</button>
+                        </div>
+                        <div id="tageswahlContent" class="dienstplan-container"></div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- PDF Modal -->
+    <div id="pdfModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <button class="modal-close" id="closePdfBtn">&times;</button>
+            <h3 id="pdfTitle">Dienstplan</h3>
+            <div class="pdf-viewer-container">
+                <iframe id="pdfViewer" src="" style="width: 100%; height: 500px; border: none;"></iframe>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-secondary" id="downloadPdfBtn">Download</button>
+                <button class="btn-primary" id="sharePdfBtn">Teilen</button>
+            </div>
+        </div>
+    </div>
+
     <script src="config.js"></script>
-    <script src="auth.js"></script>
-    <script src="scraper.js"></script>
-    <script src="ui.js"></script>
-    <script src="app.js"></script>
+    <script src="app-new.js"></script>
 </body>
 </html>
