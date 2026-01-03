@@ -1,43 +1,12 @@
 [build]
-  command = "echo 'Static site - no build needed'"
+  command = "echo 'Static site ready'"
   publish = "."
-  functions = "netlify/functions"
+  functions = "functions"
+
+[functions]
+  node_bundler = "esbuild"
 
 [[redirects]]
   from = "/*"
   to = "/index.html"
-  status = 200
-
-# CORS headers for PERDIS API requests
-[[headers]]
-  for = "/*"
-  [headers.values]
-    Access-Control-Allow-Origin = "*"
-    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
-    Access-Control-Allow-Headers = "Content-Type, Authorization"
-    X-Content-Type-Options = "nosniff"
-    X-Frame-Options = "SAMEORIGIN"
-    Cache-Control = "public, max-age=3600"
-
-# Service worker headers
-[[headers]]
-  for = "/sw.js"
-  [headers.values]
-    Cache-Control = "public, max-age=0, must-revalidate"
-    Content-Type = "application/javascript"
-
-# API routes through netlify functions
-[[redirects]]
-  from = "/api/login"
-  to = "/.netlify/functions/login"
-  status = 200
-
-[[redirects]]
-  from = "/api/roster"
-  to = "/.netlify/functions/roster"
-  status = 200
-
-[[redirects]]
-  from = "/api/pdf"
-  to = "/.netlify/functions/pdf"
   status = 200
