@@ -1,0 +1,12 @@
+{
+  "name": "perdisweb",
+  "version": "1.0.0",
+  "description": "PERDIS Dienstplan Web Interface",
+  "main": "index.html",
+  "dependencies": {
+    "jsdom": "^22.1.0"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}
