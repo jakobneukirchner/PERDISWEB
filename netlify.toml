@@ -1,10 +1,7 @@
 [build]
-  command = "echo 'Static site ready'"
+  command = "npm install"
   publish = "."
   functions = "functions"
-
-[functions]
-  node_bundler = "esbuild"
 
 [[redirects]]
   from = "/*"

@@ -1,979 +1,557 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PERDISWEB - Dienstplan</title>
-    <style>
-        :root {
-            --color-primary: #008B8B;
-            --color-secondary: #20B2AA;
-            --color-bg: #f5f5f5;
-            --color-surface: #ffffff;
-            --color-text: #1a1a1a;
-            --color-text-secondary: #666666;
-            --color-border: #e0e0e0;
-            --color-success: #4CAF50;
-            --color-warning: #ff9800;
-            --color-error: #f44336;
-        }
-
-        [data-theme="dark"] {
-            --color-bg: #1a1a1a;
-            --color-surface: #2d2d2d;
-            --color-text: #ffffff;
-            --color-text-secondary: #cccccc;
-            --color-border: #404040;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background-color: var(--color-bg);
-            color: var(--color-text);
-            transition: background-color 0.3s, color 0.3s;
-        }
-
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 0;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        /* Header */
-        .header {
-            background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
-            color: white;
-            padding: 20px;
-            text-align: center;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }
-
-        .header h1 {
-            font-size: 24px;
-            margin-bottom: 5px;
-        }
-
-        .header-user {
-            font-size: 12px;
-            opacity: 0.9;
-        }
-
-        /* Main Content */
-        .main {
-            flex: 1;
-            padding: 20px;
-            overflow-y: auto;
-        }
-
-        /* Navigation */
-        .nav-tabs {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            background: var(--color-surface);
-            padding: 10px;
-            border-radius: 8px;
-            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
-        }
-
-        .nav-btn {
-            flex: 1;
-            padding: 12px;
-            border: none;
-            border-radius: 6px;
-            background: var(--color-border);
-            color: var(--color-text);
-            cursor: pointer;
-            font-weight: 500;
-            transition: all 0.3s;
-            font-size: 14px;
-        }
-
-        .nav-btn.active {
-            background: var(--color-primary);
-            color: white;
-        }
-
-        .nav-btn:hover {
-            background: var(--color-secondary);
-            color: white;
-        }
-
-        /* Views */
-        .view {
-            display: none;
-        }
-
-        .view.active {
-            display: block;
-            animation: fadeIn 0.3s;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-
-        /* Mein Tag View */
-        .today-card {
-            background: var(--color-surface);
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 15px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            border-left: 4px solid var(--color-primary);
-        }
-
-        .today-date {
-            font-size: 12px;
-            color: var(--color-text-secondary);
-            margin-bottom: 10px;
-        }
-
-        .today-title {
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 15px;
-            color: var(--color-text);
-        }
-
-        /* Perlschnur Layout */
-        .perlschnur {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-
-        .fahrt-item {
-            background: var(--color-bg);
-            border: 1px solid var(--color-border);
-            border-radius: 6px;
-            padding: 12px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            transition: all 0.2s;
-        }
-
-        .fahrt-item:hover {
-            border-color: var(--color-primary);
-            box-shadow: 0 2px 6px rgba(0, 139, 139, 0.1);
-        }
-
-        .fahrt-line {
-            font-weight: 700;
-            color: var(--color-primary);
-            font-size: 16px;
-            min-width: 45px;
-            text-align: center;
-        }
-
-        .fahrt-times {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            flex: 1;
-        }
-
-        .fahrt-time {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 13px;
-        }
-
-        .fahrt-time.start {
-            color: var(--color-success);
-            font-weight: 600;
-        }
-
-        .fahrt-time.end {
-            color: var(--color-warning);
-        }
-
-        .fahrt-ort {
-            font-size: 12px;
-            color: var(--color-text-secondary);
-            text-align: right;
-            min-width: 100px;
-        }
-
-        .dienst-header {
-            background: var(--color-primary);
-            color: white;
-            padding: 12px 16px;
-            border-radius: 6px;
-            margin-bottom: 15px;
-            font-weight: 600;
-            font-size: 14px;
-        }
-
-        /* Dienstplan View */
-        .dienstplan-list {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .dienstplan-day {
-            background: var(--color-surface);
-            border-radius: 6px;
-            padding: 15px;
-            cursor: pointer;
-            transition: all 0.2s;
-            border: 2px solid transparent;
-            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
-        }
-
-        .dienstplan-day:hover {
-            border-color: var(--color-primary);
-            box-shadow: 0 2px 8px rgba(0, 139, 139, 0.15);
-            transform: translateY(-2px);
-        }
-
-        .dienstplan-day-date {
-            font-size: 12px;
-            color: var(--color-text-secondary);
-            margin-bottom: 5px;
-        }
-
-        .dienstplan-day-title {
-            font-weight: 600;
-            font-size: 15px;
-            margin-bottom: 8px;
-        }
-
-        .dienstplan-day-summary {
-            font-size: 12px;
-            color: var(--color-text-secondary);
-        }
-
-        /* Calendar / Tageswahl */
-        .calendar-container {
-            background: var(--color-surface);
-            border-radius: 8px;
-            padding: 20px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            margin-bottom: 20px;
-        }
-
-        .calendar-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-
-        .calendar-header button {
-            background: var(--color-primary);
-            color: white;
-            border: none;
-            padding: 8px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-        }
-
-        .calendar-grid {
-            display: grid;
-            grid-template-columns: repeat(7, 1fr);
-            gap: 8px;
-            margin-bottom: 20px;
-        }
-
-        .calendar-day {
-            aspect-ratio: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border: 2px solid var(--color-border);
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-size: 12px;
-            font-weight: 500;
-        }
-
-        .calendar-day:hover:not(.disabled) {
-            border-color: var(--color-primary);
-            background: var(--color-bg);
-        }
-
-        .calendar-day.selected {
-            background: var(--color-primary);
-            color: white;
-            border-color: var(--color-primary);
-        }
-
-        .calendar-day.today {
-            border-color: var(--color-warning);
-        }
-
-        .calendar-day.disabled {
-            color: var(--color-text-secondary);
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .selected-date-view {
-            display: none;
-        }
-
-        .selected-date-view.active {
-            display: block;
-        }
-
-        /* PDF Actions */
-        .action-buttons {
-            display: flex;
-            gap: 10px;
-            margin-top: 15px;
-        }
-
-        .btn {
-            flex: 1;
-            padding: 12px;
-            border: none;
-            border-radius: 6px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            font-size: 14px;
-        }
-
-        .btn-primary {
-            background: var(--color-primary);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background: var(--color-secondary);
-            box-shadow: 0 4px 12px rgba(0, 139, 139, 0.3);
-        }
-
-        .btn-secondary {
-            background: var(--color-border);
-            color: var(--color-text);
-        }
-
-        .btn-secondary:hover {
-            background: var(--color-text-secondary);
-            color: white;
-        }
-
-        .btn-danger {
-            background: var(--color-error);
-            color: white;
-        }
-
-        .btn-danger:hover {
-            background: #da190b;
-        }
-
-        /* Footer */
-        .footer {
-            background: var(--color-surface);
-            padding: 15px 20px;
-            text-align: center;
-            border-top: 1px solid var(--color-border);
-            font-size: 12px;
-            color: var(--color-text-secondary);
-        }
-
-        .footer-controls {
-            display: flex;
-            gap: 10px;
-            justify-content: center;
-            margin-bottom: 10px;
-        }
-
-        .theme-toggle {
-            background: var(--color-border);
-            border: none;
-            padding: 8px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 12px;
-        }
-
-        /* Loading & Messages */
-        .loading {
-            text-align: center;
-            padding: 40px 20px;
-            color: var(--color-text-secondary);
-        }
-
-        .spinner {
-            display: inline-block;
-            width: 40px;
-            height: 40px;
-            border: 4px solid var(--color-border);
-            border-top-color: var(--color-primary);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .message {
-            padding: 12px 16px;
-            border-radius: 6px;
-            margin-bottom: 15px;
-            animation: slideIn 0.3s;
-        }
-
-        @keyframes slideIn {
-            from { transform: translateY(-10px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
-        }
-
-        .message.success {
-            background: rgba(76, 175, 80, 0.1);
-            color: var(--color-success);
-            border-left: 4px solid var(--color-success);
-        }
-
-        .message.error {
-            background: rgba(244, 67, 54, 0.1);
-            color: var(--color-error);
-            border-left: 4px solid var(--color-error);
-        }
-
-        /* Responsive */
-        @media (max-width: 600px) {
-            .header h1 {
-                font-size: 18px;
-            }
-
-            .nav-tabs {
-                padding: 8px;
-            }
-
-            .nav-btn {
-                font-size: 12px;
-                padding: 10px;
-            }
-
-            .fahrt-item {
-                flex-wrap: wrap;
-            }
-
-            .fahrt-ort {
-                flex-basis: 100%;
-                text-align: left;
-                margin-top: 5px;
-            }
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PERDISWEB – Dienstplan</title>
+<style>
+:root{
+  --teal:#008B8B; --teal2:#20B2AA;
+  --bg:#f4f4f4; --card:#fff;
+  --text:#1a1a1a; --muted:#666;
+  --border:#ddd; --green:#4CAF50; --orange:#ff9800; --red:#f44336;
+}
+[data-theme=dark]{
+  --bg:#1a1a1a; --card:#2a2a2a;
+  --text:#f0f0f0; --muted:#aaa; --border:#444;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column;transition:.3s}
+
+/* HEADER */
+.hdr{background:linear-gradient(135deg,var(--teal),var(--teal2));color:#fff;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:99;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.hdr h1{font-size:20px;letter-spacing:.5px}
+.hdr-sub{font-size:12px;opacity:.85;margin-top:2px}
+.hdr-right{display:flex;gap:8px;align-items:center}
+.icon-btn{background:rgba(255,255,255,.2);border:none;color:#fff;padding:7px 10px;border-radius:6px;cursor:pointer;font-size:14px}
+
+/* NAV */
+.nav{display:flex;background:var(--card);padding:8px;gap:6px;border-bottom:1px solid var(--border)}
+.nav-btn{flex:1;padding:10px;border:none;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;font-weight:600;font-size:13px;transition:.2s}
+.nav-btn.active{background:var(--teal);color:#fff}
+.nav-btn:hover:not(.active){background:var(--border)}
+
+/* MAIN */
+.main{flex:1;padding:16px;max-width:720px;width:100%;margin:0 auto}
+
+/* VIEWS */
+.view{display:none}
+.view.active{display:block;animation:fadein .25s}
+@keyframes fadein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* LOGIN */
+.login-wrap{display:flex;align-items:center;justify-content:center;min-height:70vh}
+.login-box{background:var(--card);border-radius:12px;padding:32px;width:100%;max-width:380px;box-shadow:0 4px 20px rgba(0,0,0,.1)}
+.login-box h2{color:var(--teal);margin-bottom:6px;font-size:22px}
+.login-box p{color:var(--muted);font-size:13px;margin-bottom:24px}
+label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px;margin-top:14px}
+input[type=text],input[type=password]{
+  width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:8px;
+  font-size:14px;background:var(--bg);color:var(--text);transition:.2s
+}
+input:focus{outline:none;border-color:var(--teal)}
+.btn{display:block;width:100%;padding:13px;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;transition:.2s;margin-top:20px}
+.btn-primary{background:var(--teal);color:#fff}
+.btn-primary:hover{background:var(--teal2)}
+.btn-primary:disabled{opacity:.5;cursor:default}
+
+/* MESSAGES */
+.msg{padding:11px 14px;border-radius:8px;font-size:13px;margin-top:14px;display:none}
+.msg.show{display:block}
+.msg.err{background:rgba(244,67,54,.1);color:var(--red);border-left:4px solid var(--red)}
+.msg.ok{background:rgba(76,175,80,.1);color:var(--green);border-left:4px solid var(--green)}
+
+/* LOADING */
+.loading{text-align:center;padding:48px 20px;color:var(--muted)}
+.spin{display:inline-block;width:36px;height:36px;border:4px solid var(--border);border-top-color:var(--teal);border-radius:50%;animation:spin .9s linear infinite;margin-bottom:12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* TODAY CARD */
+.day-card{background:var(--card);border-radius:10px;padding:18px;box-shadow:0 2px 8px rgba(0,0,0,.07);border-left:4px solid var(--teal)}
+.day-card-title{background:var(--teal);color:#fff;padding:10px 14px;border-radius:7px;font-weight:700;font-size:14px;margin-bottom:14px}
+
+/* PERLSCHNUR */
+.perlschnur{display:flex;flex-direction:column;gap:10px}
+.fahrt{
+  background:var(--bg);border:1.5px solid var(--border);border-radius:8px;
+  padding:12px 14px;display:grid;grid-template-columns:56px 1fr auto;align-items:center;gap:10px;
+  transition:.2s;
+}
+.fahrt:hover{border-color:var(--teal);box-shadow:0 2px 8px rgba(0,139,139,.12)}
+.fahrt-num{font-weight:800;color:var(--teal);font-size:18px;text-align:center}
+.fahrt-times{display:flex;flex-direction:column;gap:3px}
+.t-start{color:var(--green);font-weight:700;font-size:13px}
+.t-end{color:var(--orange);font-size:13px}
+.fahrt-ort{font-size:11px;color:var(--muted);text-align:right;line-height:1.4}
+
+/* SEPARATOR – pause/leer */
+.fahrt-pause{
+  background:transparent;border:1.5px dashed var(--border);border-radius:8px;
+  padding:8px 14px;font-size:12px;color:var(--muted);text-align:center;
+}
+
+/* ACTION BUTTONS */
+.actions{display:flex;gap:8px;margin-top:14px}
+.btn-sm{flex:1;padding:10px;border:none;border-radius:7px;font-weight:600;font-size:13px;cursor:pointer;transition:.2s}
+.btn-teal{background:var(--teal);color:#fff}
+.btn-teal:hover{background:var(--teal2)}
+.btn-gray{background:var(--border);color:var(--text)}
+.btn-gray:hover{filter:brightness(.9)}
+
+/* ROSTER LIST */
+.roster-list{display:flex;flex-direction:column;gap:8px}
+.roster-item{
+  background:var(--card);border-radius:8px;padding:14px 16px;
+  border:2px solid transparent;cursor:pointer;transition:.2s;box-shadow:0 1px 4px rgba(0,0,0,.05);
+}
+.roster-item:hover{border-color:var(--teal);transform:translateY(-1px)}
+.roster-item-date{font-size:11px;color:var(--muted);margin-bottom:3px}
+.roster-item-svc{font-weight:700;font-size:15px}
+.roster-item-time{font-size:12px;color:var(--muted);margin-top:3px}
+.badge{display:inline-block;background:var(--teal);color:#fff;border-radius:20px;padding:2px 9px;font-size:11px;margin-right:4px;font-weight:600}
+.badge-free{background:var(--border);color:var(--muted)}
+
+/* CALENDAR */
+.cal-wrap{background:var(--card);border-radius:10px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.07);margin-bottom:16px}
+.cal-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.cal-hdr h3{font-size:16px}
+.cal-nav{background:var(--teal);color:#fff;border:none;padding:7px 12px;border-radius:6px;cursor:pointer;font-size:14px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.cal-wday{text-align:center;font-size:11px;font-weight:700;color:var(--muted);padding:4px}
+.cal-day{
+  aspect-ratio:1;display:flex;align-items:center;justify-content:center;
+  border:1.5px solid var(--border);border-radius:7px;font-size:12px;font-weight:600;
+  cursor:pointer;transition:.2s;position:relative;
+}
+.cal-day:hover:not(.cal-other){border-color:var(--teal);background:rgba(0,139,139,.07)}
+.cal-day.cal-today{border-color:var(--orange)}
+.cal-day.cal-selected{background:var(--teal);color:#fff;border-color:var(--teal)}
+.cal-day.cal-has-shift::after{content:'';position:absolute;bottom:3px;left:50%;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:var(--green)}
+.cal-day.cal-selected.cal-has-shift::after{background:#fff}
+.cal-day.cal-other{color:var(--border);cursor:default}
+.cal-detail{margin-top:8px}
+
+/* FOOTER */
+.footer{text-align:center;padding:14px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);background:var(--card)}
+
+@media(max-width:500px){
+  .hdr h1{font-size:17px}
+  .fahrt{grid-template-columns:44px 1fr auto;gap:7px}
+  .fahrt-num{font-size:15px}
+}
+</style>
 </head>
 <body>
-    <div class="container">
-        <!-- Header -->
-        <div class="header">
-            <h1>PERDISWEB</h1>
-            <div class="header-user" id="headerUser">Nicht angemeldet</div>
-        </div>
 
-        <!-- Main Content -->
-        <div class="main">
-            <!-- Login View -->
-            <div id="loginView" class="view active">
-                <div style="padding: 40px 20px; text-align: center;">
-                    <div style="background: var(--color-surface); border-radius: 8px; padding: 30px; max-width: 400px; margin: 0 auto; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);">
-                        <h2 style="margin-bottom: 10px; color: var(--color-primary);">PERDIS Dienstplan</h2>
-                        <p style="margin-bottom: 20px; font-size: 12px; color: var(--color-text-secondary);">Verkehrs-AG</p>
-                        
-                        <div style="margin-bottom: 15px;">
-                            <input 
-                                type="text" 
-                                id="username" 
-                                placeholder="Benutzername" 
-                                style="width: 100%; padding: 12px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 14px;"
-                            >
-                        </div>
+<!-- HEADER -->
+<div class="hdr" id="hdr">
+  <div>
+    <h1>PERDISWEB</h1>
+    <div class="hdr-sub" id="hdrSub">Verkehrs-AG</div>
+  </div>
+  <div class="hdr-right">
+    <button class="icon-btn" onclick="toggleTheme()" title="Darkmode">🌙</button>
+    <button class="icon-btn" id="logoutBtn" onclick="logout()" style="display:none">Abmelden</button>
+  </div>
+</div>
 
-                        <div style="margin-bottom: 20px;">
-                            <input 
-                                type="password" 
-                                id="password" 
-                                placeholder="Passwort" 
-                                style="width: 100%; padding: 12px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 14px;"
-                            >
-                        </div>
+<!-- LOGIN -->
+<div class="main" id="loginSection">
+  <div class="login-wrap">
+    <div class="login-box">
+      <h2>PERDIS</h2>
+      <p>Verkehrs-AG Dienstplan</p>
+      <label for="uname">Benutzername</label>
+      <input type="text" id="uname" autocomplete="username" placeholder="z.B. muster">
+      <label for="upass">Passwort</label>
+      <input type="password" id="upass" autocomplete="current-password" placeholder="••••••">
+      <button class="btn btn-primary" id="loginBtn" onclick="doLogin()">Anmelden</button>
+      <div class="msg" id="loginMsg"></div>
+    </div>
+  </div>
+</div>
 
-                        <button id="loginBtn" class="btn btn-primary" style="width: 100%;">
-                            Anmelden
-                        </button>
+<!-- APP -->
+<div id="appSection" style="display:none;flex:1;display:none;flex-direction:column">
+  <div class="nav">
+    <button class="nav-btn active" data-view="today" onclick="switchView('today',this)">Mein Tag</button>
+    <button class="nav-btn" data-view="roster" onclick="switchView('roster',this)">Dienstplan</button>
+    <button class="nav-btn" data-view="calendar" onclick="switchView('calendar',this)">Tageswahl</button>
+  </div>
 
-                        <div id="loginMessage" style="margin-top: 15px; font-size: 12px;"></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Main App Views -->
-            <div id="appViews" style="display: none;">
-                <!-- Navigation -->
-                <div class="nav-tabs">
-                    <button class="nav-btn active" onclick="switchView('today')">Mein Tag</button>
-                    <button class="nav-btn" onclick="switchView('roster')">Dienstplan</button>
-                    <button class="nav-btn" onclick="switchView('calendar')">Tageswahl</button>
-                </div>
-
-                <!-- Mein Tag View -->
-                <div id="todayView" class="view active">
-                    <div id="todayContent" class="loading">
-                        <div class="spinner"></div>
-                        <p style="margin-top: 15px;">Laden...</p>
-                    </div>
-                </div>
-
-                <!-- Dienstplan View -->
-                <div id="rosterView" class="view">
-                    <div id="rosterContent" class="loading">
-                        <div class="spinner"></div>
-                        <p style="margin-top: 15px;">Dienstplan wird geladen...</p>
-                    </div>
-                </div>
-
-                <!-- Tageswahl View -->
-                <div id="calendarView" class="view">
-                    <div class="calendar-container">
-                        <div class="calendar-header">
-                            <button onclick="previousMonth()">← Zurück</button>
-                            <h3 id="monthYear" style="margin: 0;">Januar 2026</h3>
-                            <button onclick="nextMonth()">Weiter →</button>
-                        </div>
-                        <div id="calendarGrid" class="calendar-grid"></div>
-                    </div>
-                    <div id="selectedDateView" class="selected-date-view">
-                        <div id="selectedDateContent"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Footer -->
-        <div class="footer">
-            <div class="footer-controls">
-                <button class="theme-toggle" onclick="toggleTheme()">🌙 Darkmode</button>
-                <button class="theme-toggle" onclick="logout()" id="logoutBtn" style="display: none;">Abmelden</button>
-            </div>
-            <div>PERDISWEB v1.0 - Live from Verkehrs-AG</div>
-        </div>
+  <div class="main">
+    <!-- TODAY -->
+    <div id="todayView" class="view active">
+      <div id="todayContent" class="loading"><div class="spin"></div><div>Laden…</div></div>
     </div>
 
-    <script>
-        // ===== State =====
-        let appState = {
-            isLoggedIn: false,
-            username: '',
-            session: '',
-            roster: {},
-            selectedDate: new Date(),
-            currentMonth: new Date()
-        };
-
-        // ===== LocalStorage Utils =====
-        const StorageUtil = {
-            encrypt: (text) => btoa(text),
-            decrypt: (encoded) => atob(encoded),
-            save: (key, value) => localStorage.setItem(key, StorageUtil.encrypt(JSON.stringify(value))),
-            load: (key) => {
-                const encrypted = localStorage.getItem(key);
-                return encrypted ? JSON.parse(StorageUtil.decrypt(encrypted)) : null;
-            },
-            clear: () => localStorage.clear()
-        };
-
-        // ===== Login =====
-        async function login() {
-            const username = document.getElementById('username').value.trim();
-            const password = document.getElementById('password').value.trim();
-            const messageEl = document.getElementById('loginMessage');
-
-            if (!username || !password) {
-                messageEl.className = 'message error';
-                messageEl.textContent = 'Benutzername und Passwort erforderlich';
-                return;
-            }
-
-            messageEl.innerHTML = '<div class="spinner" style="width: 20px; height: 20px; display: inline-block;"></div> Anmeldung wird verarbeitet...';
-            messageEl.className = '';
-
-            try {
-                const response = await fetch('/.netlify/functions/perdis-login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password, action: 'login' })
-                });
-
-                const result = await response.json();
-
-                if (!result.success) {
-                    throw new Error(result.error || 'Anmeldung fehlgeschlagen');
-                }
-
-                appState.isLoggedIn = true;
-                appState.username = username;
-                appState.session = result.session;
-                appState.roster = result.roster || {};
-
-                StorageUtil.save('perdis_session', {
-                    username,
-                    session: result.session,
-                    timestamp: Date.now()
-                });
-                StorageUtil.save('perdis_roster', appState.roster);
-
-                document.getElementById('loginView').classList.remove('active');
-                document.getElementById('appViews').style.display = 'block';
-                document.getElementById('logoutBtn').style.display = 'block';
-                document.getElementById('headerUser').textContent = `Angemeldet als: ${username}`;
-
-                loadTodaySchedule();
-                renderCalendar();
-
-                messageEl.className = 'message success';
-                messageEl.textContent = 'Erfolgreich angemeldet!';
-
-            } catch (error) {
-                console.error('Login error:', error);
-                messageEl.className = 'message error';
-                messageEl.textContent = 'Fehler: ' + error.message;
-            }
-        }
-
-        // ===== Logout =====
-        function logout() {
-            if (confirm('Wirklich abmelden?')) {
-                StorageUtil.clear();
-                appState = {
-                    isLoggedIn: false,
-                    username: '',
-                    session: '',
-                    roster: {},
-                    selectedDate: new Date(),
-                    currentMonth: new Date()
-                };
-
-                document.getElementById('loginView').classList.add('active');
-                document.getElementById('appViews').style.display = 'none';
-                document.getElementById('logoutBtn').style.display = 'none';
-                document.getElementById('headerUser').textContent = 'Nicht angemeldet';
-                document.getElementById('username').value = '';
-                document.getElementById('password').value = '';
-            }
-        }
-
-        // ===== Load Today Schedule =====
-        function loadTodaySchedule() {
-            const today = new Date().toISOString().split('T')[0];
-            const todayData = appState.roster[today] || [];
-            const container = document.getElementById('todayContent');
-
-            if (todayData.length === 0) {
-                container.innerHTML = '<p style="text-align: center; padding: 30px; color: var(--color-text-secondary);">Heute keine Dienste geplant</p>';
-                return;
-            }
-
-            let html = '<div class="today-card">';
-            html += `<div class="dienst-header">Dienste am ${formatDate(today)}</div>`;
-            html += '<div class="perlschnur">';
-
-            todayData.forEach(fahrt => {
-                html += `
-                    <div class="fahrt-item">
-                        <div class="fahrt-line">${fahrt.line}</div>
-                        <div class="fahrt-times">
-                            <div class="fahrt-time start">▶ ${fahrt.start}</div>
-                            <div class="fahrt-time end">■ ${fahrt.end}</div>
-                        </div>
-                        <div class="fahrt-ort">${fahrt.location}</div>
-                    </div>
-                `;
-            });
-
-            html += '</div>';
-            html += '<div class="action-buttons">';
-            html += `<button class="btn btn-primary" onclick="downloadPDF('${today}')">PDF downloaden</button>`;
-            html += `<button class="btn btn-secondary" onclick="sharePDF('${today}')">Teilen</button>`;
-            html += '</div>';
-            html += '</div>';
-
-            container.innerHTML = html;
-        }
-
-        // ===== Load Roster View =====
-        function loadRosterView() {
-            const container = document.getElementById('rosterContent');
-            const dates = Object.keys(appState.roster).sort();
-
-            if (dates.length === 0) {
-                container.innerHTML = '<p style="text-align: center; padding: 30px;">Keine Dienstpläne vorhanden</p>';
-                return;
-            }
-
-            let html = '<div class="dienstplan-list">';
-
-            dates.forEach(date => {
-                const fahrten = appState.roster[date];
-                const summary = fahrten.map(f => f.line).join(', ');
-
-                html += `
-                    <div class="dienstplan-day" onclick="selectDateFromRoster('${date}')">
-                        <div class="dienstplan-day-date">${formatDate(date)}</div>
-                        <div class="dienstplan-day-title">Linien: ${summary}</div>
-                        <div class="dienstplan-day-summary">${fahrten.length} Fahrt(en)</div>
-                    </div>
-                `;
-            });
-
-            html += '</div>';
-            container.innerHTML = html;
-        }
-
-        // ===== Render Calendar =====
-        function renderCalendar() {
-            const year = appState.currentMonth.getFullYear();
-            const month = appState.currentMonth.getMonth();
-
-            const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
-                'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
-            document.getElementById('monthYear').textContent = `${monthNames[month]} ${year}`;
-
-            const firstDay = new Date(year, month, 1);
-            const startDate = new Date(firstDay);
-            startDate.setDate(startDate.getDate() - firstDay.getDay());
-
-            const grid = document.getElementById('calendarGrid');
-            grid.innerHTML = '';
-
-            const today = new Date().toISOString().split('T')[0];
-            const weekDays = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
-
-            weekDays.forEach(day => {
-                const header = document.createElement('div');
-                header.textContent = day;
-                header.style.textAlign = 'center';
-                header.style.fontWeight = '600';
-                header.style.fontSize = '12px';
-                header.style.color = 'var(--color-text-secondary)';
-                header.style.padding = '8px';
-                grid.appendChild(header);
-            });
-
-            for (let i = 0; i < 42; i++) {
-                const date = new Date(startDate);
-                date.setDate(startDate.getDate() + i);
-                const dateStr = date.toISOString().split('T')[0];
-
-                const dayEl = document.createElement('div');
-                dayEl.className = 'calendar-day';
-
-                if (date.getMonth() !== month) {
-                    dayEl.classList.add('disabled');
-                }
-
-                if (dateStr === today) {
-                    dayEl.classList.add('today');
-                }
-
-                if (dateStr === appState.selectedDate.toISOString().split('T')[0]) {
-                    dayEl.classList.add('selected');
-                }
-
-                dayEl.textContent = date.getDate();
-
-                if (date.getMonth() === month) {
-                    dayEl.onclick = () => selectCalendarDate(dateStr);
-                }
-
-                grid.appendChild(dayEl);
-            }
-        }
-
-        // ===== Select Calendar Date =====
-        async function selectCalendarDate(dateStr) {
-            appState.selectedDate = new Date(dateStr);
-            const selectedData = appState.roster[dateStr];
-
-            if (!selectedData || selectedData.length === 0) {
-                document.getElementById('selectedDateView').classList.add('active');
-                document.getElementById('selectedDateContent').innerHTML = `
-                    <div style="background: var(--color-surface); border-radius: 8px; padding: 30px; text-align: center;">
-                        <p style="color: var(--color-text-secondary);">Keine Dienste am ${formatDate(dateStr)}</p>
-                    </div>
-                `;
-                return;
-            }
-
-            // Try to fetch detailed shift info
-            try {
-                const response = await fetch('/.netlify/functions/perdis-login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        action: 'shift',
-                        date: dateStr,
-                        password: appState.session
-                    })
-                });
-                const result = await response.json();
-                if (result.success && result.shifts && result.shifts.length > 0) {
-                    selectedData.splice(0, selectedData.length, ...result.shifts);
-                }
-            } catch (e) {
-                console.log('Shift fetch fallback to roster data');
-            }
-
-            let html = '<div class="today-card">';
-            html += `<div class="dienst-header">Dienste am ${formatDate(dateStr)}</div>`;
-            html += '<div class="perlschnur">';
-
-            selectedData.forEach(fahrt => {
-                html += `
-                    <div class="fahrt-item">
-                        <div class="fahrt-line">${fahrt.line}</div>
-                        <div class="fahrt-times">
-                            <div class="fahrt-time start">▶ ${fahrt.start}</div>
-                            <div class="fahrt-time end">■ ${fahrt.end}</div>
-                        </div>
-                        <div class="fahrt-ort">${fahrt.location}</div>
-                    </div>
-                `;
-            });
-
-            html += '</div>';
-            html += '<div class="action-buttons">';
-            html += `<button class="btn btn-primary" onclick="downloadPDF('${dateStr}')">PDF downloaden</button>`;
-            html += `<button class="btn btn-secondary" onclick="sharePDF('${dateStr}')">Teilen</button>`;
-            html += '</div>';
-            html += '</div>';
-
-            document.getElementById('selectedDateView').classList.add('active');
-            document.getElementById('selectedDateContent').innerHTML = html;
-            renderCalendar();
-        }
-
-        function previousMonth() {
-            appState.currentMonth.setMonth(appState.currentMonth.getMonth() - 1);
-            renderCalendar();
-        }
-
-        function nextMonth() {
-            appState.currentMonth.setMonth(appState.currentMonth.getMonth() + 1);
-            renderCalendar();
-        }
-
-        // ===== Navigation =====
-        function switchView(viewName) {
-            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
-
-            if (viewName === 'today') {
-                document.getElementById('todayView').classList.add('active');
-            } else if (viewName === 'roster') {
-                document.getElementById('rosterView').classList.add('active');
-                loadRosterView();
-            } else if (viewName === 'calendar') {
-                document.getElementById('calendarView').classList.add('active');
-            }
-
-            event.target.classList.add('active');
-        }
-
-        function selectDateFromRoster(dateStr) {
-            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
-            document.getElementById('calendarView').classList.add('active');
-            appState.currentMonth = new Date(dateStr);
-            renderCalendar();
-            selectCalendarDate(dateStr);
-        }
-
-        // ===== PDF Functions =====
-        function downloadPDF(dateStr) {
-            const pdfUrl = `https://perdisweb.verkehrs-ag.de/WebComm/shiprint.aspx?${dateStr}`;
-            window.open(pdfUrl, '_blank');
-        }
-
-        function sharePDF(dateStr) {
-            const pdfUrl = `https://perdisweb.verkehrs-ag.de/WebComm/shiprint.aspx?${dateStr}`;
-
-            if (navigator.share) {
-                navigator.share({
-                    title: 'Dienstplan',
-                    text: `Mein Dienstplan vom ${formatDate(dateStr)}`,
-                    url: pdfUrl
-                }).catch(err => console.log('Fehler beim Teilen:', err));
-            } else {
-                alert('Teilen wird von diesem Browser nicht unterstützt');
-                downloadPDF(dateStr);
-            }
-        }
-
-        // ===== Theme Toggle =====
-        function toggleTheme() {
-            const current = document.documentElement.getAttribute('data-theme');
-            const newTheme = current === 'dark' ? 'light' : 'dark';
-            document.documentElement.setAttribute('data-theme', newTheme);
-            localStorage.setItem('theme', newTheme);
-        }
-
-        // ===== Helpers =====
-        function formatDate(dateStr) {
-            const date = new Date(dateStr + 'T00:00:00');
-            const days = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
-            return `${days[date.getDay()]}, ${date.getDate()}.${date.getMonth() + 1}.${date.getFullYear()}`;
-        }
-
-        // ===== Event Listeners =====
-        document.getElementById('loginBtn').onclick = login;
-        document.getElementById('username').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') login();
-        });
-        document.getElementById('password').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') login();
-        });
-
-        // ===== Initialization =====
-        window.addEventListener('load', () => {
-            const savedTheme = localStorage.getItem('theme') || 'light';
-            document.documentElement.setAttribute('data-theme', savedTheme);
-
-            const session = StorageUtil.load('perdis_session');
-            if (session) {
-                const roster = StorageUtil.load('perdis_roster');
-                if (roster) {
-                    appState.isLoggedIn = true;
-                    appState.username = session.username;
-                    appState.session = session.session;
-                    appState.roster = roster;
-
-                    document.getElementById('loginView').classList.remove('active');
-                    document.getElementById('appViews').style.display = 'block';
-                    document.getElementById('logoutBtn').style.display = 'block';
-                    document.getElementById('headerUser').textContent = `Angemeldet als: ${appState.username}`;
-
-                    loadTodaySchedule();
-                    renderCalendar();
-                }
-            }
-        });
-    </script>
+    <!-- ROSTER -->
+    <div id="rosterView" class="view">
+      <div id="rosterContent" class="loading"><div class="spin"></div><div>Laden…</div></div>
+    </div>
+
+    <!-- CALENDAR -->
+    <div id="calendarView" class="view">
+      <div class="cal-wrap">
+        <div class="cal-hdr">
+          <button class="cal-nav" onclick="calPrev()">&#8592;</button>
+          <h3 id="calTitle"></h3>
+          <button class="cal-nav" onclick="calNext()">&#8594;</button>
+        </div>
+        <div class="cal-grid" id="calGrid"></div>
+      </div>
+      <div id="calDetail" class="cal-detail"></div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">PERDISWEB v2.0 – Verkehrs-AG</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════════
+const S = {
+  username: '',
+  session: '',
+  roster: {},          // { 'YYYY-MM-DD': [{dienst, start, end, anfangsort}] }
+  shiftCache: {},      // { 'YYYY-MM-DD': [{dienst,start,end,vonOrt,bisOrt,linie,richtung}] }
+  calMonth: new Date(),
+  calSelected: null
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// STORAGE (base64 obfuscation)
+// ═══════════════════════════════════════════════════════════════════
+function store(k,v){try{localStorage.setItem(k,btoa(unescape(encodeURIComponent(JSON.stringify(v)))))}catch{}}
+function load(k){try{const v=localStorage.getItem(k);return v?JSON.parse(decodeURIComponent(escape(atob(v)))):null}catch{return null}}
+function clearStore(){localStorage.removeItem('ps_sess');localStorage.removeItem('ps_roster');localStorage.removeItem('ps_scache')}
+
+// ═══════════════════════════════════════════════════════════════════
+// API
+// ═══════════════════════════════════════════════════════════════════
+async function api(body) {
+  const r = await fetch('/.netlify/functions/perdis-login', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// LOGIN
+// ═══════════════════════════════════════════════════════════════════
+async function doLogin() {
+  const un = document.getElementById('uname').value.trim();
+  const pw = document.getElementById('upass').value.trim();
+  const msg = document.getElementById('loginMsg');
+  const btn = document.getElementById('loginBtn');
+
+  if (!un || !pw) { showMsg(msg, 'err', 'Bitte Benutzername und Passwort eingeben'); return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Anmelden…';
+  showMsg(msg, '', '');
+
+  const res = await api({ action:'login', username: un, password: pw }).catch(e => ({success:false,error:e.message}));
+
+  btn.disabled = false;
+  btn.textContent = 'Anmelden';
+
+  if (!res.success) {
+    showMsg(msg, 'err', res.error || 'Anmeldung fehlgeschlagen');
+    return;
+  }
+
+  S.username = un;
+  S.session  = res.session;
+  S.roster   = res.roster || {};
+  S.shiftCache = {};
+
+  store('ps_sess',   { username: un, session: S.session });
+  store('ps_roster', S.roster);
+
+  showMsg(msg, 'ok', 'Erfolgreich angemeldet!');
+  showApp();
+}
+
+function showApp() {
+  document.getElementById('loginSection').style.display = 'none';
+  const app = document.getElementById('appSection');
+  app.style.display = 'flex';
+  app.style.flexDirection = 'column';
+  document.getElementById('logoutBtn').style.display = '';
+  document.getElementById('hdrSub').textContent = 'Angemeldet als: ' + S.username;
+  renderToday();
+  S.calMonth = new Date();
+  renderCalendar();
+}
+
+function logout() {
+  if (!confirm('Wirklich abmelden?')) return;
+  clearStore();
+  Object.assign(S, { username:'', session:'', roster:{}, shiftCache:{} });
+  document.getElementById('appSection').style.display = 'none';
+  document.getElementById('loginSection').style.display = '';
+  document.getElementById('logoutBtn').style.display = 'none';
+  document.getElementById('hdrSub').textContent = 'Verkehrs-AG';
+  document.getElementById('upass').value = '';
+  document.getElementById('loginMsg').className = 'msg';
+  switchView('today', document.querySelector('.nav-btn'));
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// TODAY VIEW
+// ═══════════════════════════════════════════════════════════════════
+function renderToday() {
+  const today = todayStr();
+  const entries = S.roster[today] || [];
+  const el = document.getElementById('todayContent');
+
+  if (entries.length === 0) {
+    el.innerHTML = `<div style="text-align:center;padding:48px 0;color:var(--muted)">Heute kein Dienst geplant</div>`;
+    return;
+  }
+
+  el.innerHTML = buildDayCard(today, entries);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ROSTER VIEW
+// ═══════════════════════════════════════════════════════════════════
+function renderRoster() {
+  const el = document.getElementById('rosterContent');
+  const dates = Object.keys(S.roster).sort();
+
+  if (dates.length === 0) {
+    el.innerHTML = `<div style="text-align:center;padding:48px 0;color:var(--muted)">Kein Dienstplan geladen</div>`;
+    return;
+  }
+
+  const html = dates.map(d => {
+    const entries = S.roster[d];
+    const svcs = entries.map(e => `<span class="badge">${e.dienst}</span>`).join('');
+    const time = entries[0]?.start && entries[0]?.end ? `${entries[0].start} – ${entries[entries.length-1].end}` : '';
+    return `<div class="roster-item" onclick="selectDate('${d}')">
+      <div class="roster-item-date">${fmtDate(d)}</div>
+      <div class="roster-item-svc">${svcs}</div>
+      ${time ? `<div class="roster-item-time">${time}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `<div class="roster-list">${html}</div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CALENDAR VIEW
+// ═══════════════════════════════════════════════════════════════════
+function renderCalendar() {
+  const MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+  const DAYS   = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+  const y = S.calMonth.getFullYear();
+  const m = S.calMonth.getMonth();
+
+  document.getElementById('calTitle').textContent = `${MONTHS[m]} ${y}`;
+
+  const grid = document.getElementById('calGrid');
+  grid.innerHTML = DAYS.map(d => `<div class="cal-wday">${d}</div>`).join('');
+
+  const today = todayStr();
+  const first = new Date(y, m, 1);
+  // Monday-first offset
+  let startOff = first.getDay() - 1; if (startOff < 0) startOff = 6;
+
+  for (let i = 0; i < 42; i++) {
+    const date = new Date(y, m, 1 - startOff + i);
+    const ds = fmtISO(date);
+    const inMonth = date.getMonth() === m;
+
+    const cls = [
+      'cal-day',
+      !inMonth         ? 'cal-other'    : '',
+      ds === today     ? 'cal-today'    : '',
+      ds === S.calSelected ? 'cal-selected' : '',
+      S.roster[ds]     ? 'cal-has-shift': ''
+    ].filter(Boolean).join(' ');
+
+    const dayEl = document.createElement('div');
+    dayEl.className = cls;
+    dayEl.textContent = date.getDate();
+    if (inMonth) dayEl.onclick = () => selectDate(ds);
+    grid.appendChild(dayEl);
+  }
+}
+
+async function selectDate(ds) {
+  // If in roster view: jump to calendar
+  switchView('calendar', document.querySelector('[data-view=calendar]'));
+
+  S.calSelected = ds;
+  S.calMonth = new Date(ds + 'T12:00:00');
+  renderCalendar();
+
+  const detail = document.getElementById('calDetail');
+
+  // Use roster data as base
+  const base = S.roster[ds] || [];
+
+  if (base.length === 0) {
+    detail.innerHTML = `<div class="day-card"><div class="day-card-title">${fmtDate(ds)}</div><p style="color:var(--muted);text-align:center;padding:20px 0">Kein Dienst</p></div>`;
+    return;
+  }
+
+  // Try to load detailed shift data
+  if (!S.shiftCache[ds]) {
+    detail.innerHTML = `<div class="loading"><div class="spin"></div><div>Lade Tagesplan…</div></div>`;
+    const res = await api({ action:'shift', session: S.session, date: ds }).catch(() => null);
+    if (res && res.success && res.rows && res.rows.length > 0) {
+      S.shiftCache[ds] = res.rows;
+      store('ps_scache', S.shiftCache);
+    } else {
+      S.shiftCache[ds] = null; // mark as tried
+    }
+  }
+
+  const shiftRows = S.shiftCache[ds];
+
+  if (shiftRows && shiftRows.length > 0) {
+    detail.innerHTML = buildDetailedCard(ds, base, shiftRows);
+  } else {
+    detail.innerHTML = buildDayCard(ds, base);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CARD BUILDERS
+// ═══════════════════════════════════════════════════════════════════
+function buildDayCard(ds, entries) {
+  const fahrten = entries.map(e => `
+    <div class="fahrt">
+      <div class="fahrt-num">${e.dienst}</div>
+      <div class="fahrt-times">
+        <div class="t-start">▶ ${e.start || '–'}</div>
+        <div class="t-end">■ ${e.end || '–'}</div>
+      </div>
+      <div class="fahrt-ort">${e.anfangsort || ''}</div>
+    </div>`).join('');
+
+  return `<div class="day-card">
+    <div class="day-card-title">${fmtDate(ds)}</div>
+    <div class="perlschnur">${fahrten}</div>
+    ${actionBtns(ds)}
+  </div>`;
+}
+
+function buildDetailedCard(ds, rosterEntries, rows) {
+  // Group rows by Dienst, show as perlschnur
+  // First and last row give Gesamtzeit
+  const first = rows[0];
+  const last  = rows[rows.length - 1];
+  const svcNr = rosterEntries[0]?.dienst || first.dienst;
+
+  const fahrten = rows.map((r, i) => {
+    // Pause rows look like: richtung contains Pause / Wegezeit etc – already filtered in backend
+    return `<div class="fahrt">
+      <div class="fahrt-num" style="font-size:14px">${r.linie || r.dienst}</div>
+      <div class="fahrt-times">
+        <div class="t-start">▶ ${r.start} – ${r.vonOrt}</div>
+        <div class="t-end">■ ${r.end} – ${r.bisOrt}</div>
+      </div>
+      <div class="fahrt-ort" style="font-size:10px">${r.richtung || ''}</div>
+    </div>`;
+  }).join('');
+
+  return `<div class="day-card">
+    <div class="day-card-title">Dienst ${svcNr} · ${fmtDate(ds)} · ${first.start}–${last.end}</div>
+    <div class="perlschnur">${fahrten}</div>
+    ${actionBtns(ds)}
+  </div>`;
+}
+
+function actionBtns(ds) {
+  return `<div class="actions">
+    <button class="btn-sm btn-teal" onclick="openPDF('${ds}')">📄 PDF öffnen</button>
+    <button class="btn-sm btn-gray" onclick="sharePDF('${ds}')">⬆ Teilen</button>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PDF
+// ═══════════════════════════════════════════════════════════════════
+function openPDF(ds) {
+  window.open(`https://perdisweb.verkehrs-ag.de/WebComm/shiprint.aspx?${ds}`, '_blank');
+}
+function sharePDF(ds) {
+  const url = `https://perdisweb.verkehrs-ag.de/WebComm/shiprint.aspx?${ds}`;
+  if (navigator.share) navigator.share({ title:'Dienstplan', text:fmtDate(ds), url }).catch(()=>{});
+  else openPDF(ds);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════════════════════════════
+function switchView(name, btn) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(name + 'View').classList.add('active');
+  if (btn) btn.classList.add('active');
+  if (name === 'roster') renderRoster();
+  if (name === 'calendar') renderCalendar();
+}
+
+function calPrev() { S.calMonth.setMonth(S.calMonth.getMonth()-1); renderCalendar(); }
+function calNext() { S.calMonth.setMonth(S.calMonth.getMonth()+1); renderCalendar(); }
+
+// ═══════════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════════
+function todayStr() { return fmtISO(new Date()); }
+function fmtISO(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function fmtDate(ds) {
+  const d = new Date(ds + 'T12:00:00');
+  const DN = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
+  return `${DN[d.getDay()]}, ${d.getDate()}.${d.getMonth()+1}.${d.getFullYear()}`;
+}
+function showMsg(el, type, text) {
+  el.className = 'msg' + (type ? ' ' + type + ' show' : '');
+  el.textContent = text;
+}
+function toggleTheme() {
+  const t = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', t);
+  localStorage.setItem('ps_theme', t);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// KEYBOARD
+// ═══════════════════════════════════════════════════════════════════
+document.getElementById('upass').addEventListener('keydown', e => { if (e.key==='Enter') doLogin(); });
+document.getElementById('uname').addEventListener('keydown', e => { if (e.key==='Enter') document.getElementById('upass').focus(); });
+
+// ═══════════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════════
+window.addEventListener('load', () => {
+  const t = localStorage.getItem('ps_theme') || 'light';
+  document.documentElement.setAttribute('data-theme', t);
+
+  const sess = load('ps_sess');
+  if (sess) {
+    const roster = load('ps_roster');
+    if (sess.username && sess.session && roster) {
+      S.username = sess.username;
+      S.session  = sess.session;
+      S.roster   = roster;
+      S.shiftCache = load('ps_scache') || {};
+      showApp();
+      return;
+    }
+  }
+
+  // Pre-fill username if saved
+  if (sess && sess.username) document.getElementById('uname').value = sess.username;
+});
+</script>
 </body>
 </html>
