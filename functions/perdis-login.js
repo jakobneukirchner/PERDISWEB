@@ -1,20 +1,24 @@
 const https = require('https');
 const querystring = require('querystring');
 
-const CORS_HEADERS = {
+const CORS = {
   'Content-Type': 'application/json',
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type'
 };
 
-// ── Low-level HTTPS helper ──────────────────────────────────────────────────
-function request(options, body) {
+// ─── raw HTTPS request (no redirect following) ──────────────────────────────
+function request(opts, body) {
   return new Promise((resolve, reject) => {
-    const req = https.request(options, (res) => {
+    const req = https.request(opts, res => {
       const chunks = [];
       res.on('data', c => chunks.push(c));
-      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks).toString('latin1') }));
+      res.on('end', () => resolve({
+        status: res.statusCode,
+        headers: res.headers,
+        body: Buffer.concat(chunks).toString('latin1')
+      }));
     });
     req.on('error', reject);
     if (body) req.write(body);
@@ -22,11 +26,10 @@ function request(options, body) {
   });
 }
 
-// ── Cookie helpers ──────────────────────────────────────────────────────────
-function parseCookies(setCookieHeader) {
-  if (!setCookieHeader) return {};
+// ─── cookie jar helpers ──────────────────────────────────────────────────────
+function mergeCookies(jar, setCookieHeader) {
+  if (!setCookieHeader) return jar;
   const arr = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader];
-  const jar = {};
   arr.forEach(line => {
     const part = line.split(';')[0].trim();
     const eq = part.indexOf('=');
@@ -35,95 +38,111 @@ function parseCookies(setCookieHeader) {
   return jar;
 }
 
-function cookieString(jar) {
+function cookieStr(jar) {
   return Object.entries(jar).map(([k, v]) => `${k}=${v}`).join('; ');
 }
 
-// ── ASP.NET ViewState extractor ─────────────────────────────────────────────
+// ─── follow up to N redirects, accumulating cookies ─────────────────────────
+async function get(path, jar) {
+  let currentPath = path;
+  for (let i = 0; i < 5; i++) {
+    const resp = await request({
+      hostname: 'perdisweb.verkehrs-ag.de',
+      path: currentPath,
+      method: 'GET',
+      headers: {
+        'Cookie': cookieStr(jar),
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'text/html,application/xhtml+xml'
+      }
+    });
+    mergeCookies(jar, resp.headers['set-cookie']);
+    console.log(`[GET] ${currentPath} → ${resp.status}`);
+
+    if (resp.status === 301 || resp.status === 302 || resp.status === 303) {
+      let loc = resp.headers.location || '/';
+      if (!loc.startsWith('/')) loc = '/WebComm/' + loc;
+      currentPath = loc;
+      continue;
+    }
+    return resp;
+  }
+  throw new Error('Too many redirects');
+}
+
+// ─── extract ASP.NET hidden fields ──────────────────────────────────────────
 function extractViewState(html) {
   const fields = {};
-  const re = /name="(__[A-Z]+)"[^>]*value="([^"]*)"/g;
+  // Match both value="..." and value='...'
+  const re = /name="(__[A-Z_]+)"[^>]*value="([^"]*)"|name='(__[A-Z_]+)'[^>]*value='([^']*)'/g;
   let m;
-  while ((m = re.exec(html)) !== null) fields[m[1]] = m[2];
+  while ((m = re.exec(html)) !== null) {
+    if (m[1]) fields[m[1]] = m[2];
+    else if (m[3]) fields[m[3]] = m[4];
+  }
   return fields;
 }
 
-// ── Parse roster.aspx ───────────────────────────────────────────────────────
-// The page contains a calendar table. Each day-cell has a title attribute
-// like: "Dienst: 227 • • Zeit: 11:15 - 19:58 ..."
-// Day-number cells contain just the day number as text, and the service cell
-// sits next to it (or uses title on the <td>).
+// ─── parse roster.aspx ───────────────────────────────────────────────────────
+// Each scheduled day has a <td title="Dienst: 227 • • Zeit: 06:30 - 14:28 • • Anfangsort: Hauptbahnhof ...">DD</td>
 function parseRoster(html) {
   const roster = {};
 
-  // Find year+month from page heading  e.g. "Januar 2026" or from any date hint
-  const monthMap = { 'januar':0,'februar':1,'märz':2,'maerz':2,'april':3,'mai':4,'juni':5,'juli':6,'august':7,'september':8,'oktober':9,'november':10,'dezember':11 };
+  // Detect month/year from heading
+  const monthMap = {
+    'januar':0,'februar':1,'märz':2,'maerz':2,'april':3,'mai':4,
+    'juni':5,'juli':6,'august':7,'september':8,'oktober':9,'november':10,'dezember':11
+  };
   let year = new Date().getFullYear();
   let month = new Date().getMonth();
-  const headMatch = html.match(/(?:Januar|Februar|März|Maerz|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember)\s+(\d{4})/i);
-  if (headMatch) {
-    const mname = headMatch[0].split(/\s+/)[0].toLowerCase();
-    month = monthMap[mname] ?? month;
-    year = parseInt(headMatch[1]);
+  const hm = html.match(/(Januar|Februar|M[äa]rz|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember)\s+(\d{4})/i);
+  if (hm) {
+    month = monthMap[hm[1].toLowerCase().replace('ä','ä')] ?? month;
+    year  = parseInt(hm[2]);
   }
 
-  // Strategy: scan all <td> elements for title attributes containing "Dienst:"
-  // title example: "Dienst: 227 • • Gültig ab: 24.11.2025 • • Zeit: 11:15 - 19:58 ..."
-  const tdRe = /<td[^>]+title="([^"]+)"[^>]*>([\s\S]*?)<\/td>/gi;
+  // Primary: <td title="Dienst: ...">day</td>
+  const tdRe = /<td[^>]+title="([^"]+)"[^>]*>\s*([\s\S]*?)\s*<\/td>/gi;
   let m;
   while ((m = tdRe.exec(html)) !== null) {
     const title = m[1];
-    const cellContent = m[2].replace(/<[^>]+>/g, '').trim();
+    if (!/Dienst:/i.test(title)) continue;
 
-    if (!/Dienst:/.test(title)) continue;
-
-    // Extract service number from title
-    const dienst = title.match(/Dienst:\s*(\S+)/);
-    const zeit = title.match(/Zeit:\s*(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})/);
-    const anfang = title.match(/Anfangsort:\s*([^•]+)/);
-
-    if (!dienst) continue;
-
-    // The day number: look at cellContent (should be just the number)
-    const dayNum = parseInt(cellContent.replace(/\D/g, ''), 10);
+    const cellText = m[2].replace(/<[^>]+>/g, '').trim();
+    const dayNum   = parseInt(cellText, 10);
     if (!dayNum || dayNum < 1 || dayNum > 31) continue;
 
-    const dateStr = `${year}-${String(month + 1).padStart(2,'0')}-${String(dayNum).padStart(2,'0')}`;
+    const dienst  = title.match(/Dienst:\s*(\S+)/);
+    const zeit    = title.match(/Zeit:\s*(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/);
+    const anfang  = title.match(/Anfangsort:\s*([^•\n,]+)/);
+    if (!dienst) continue;
 
-    if (!roster[dateStr]) roster[dateStr] = [];
-    roster[dateStr].push({
-      dienst: dienst[1].trim(),
-      start: zeit ? zeit[1] : null,
-      end:   zeit ? zeit[2] : null,
-      anfangsort: anfang ? anfang[1].trim().replace(/,.*/, '') : ''
+    const ds = `${year}-${String(month+1).padStart(2,'0')}-${String(dayNum).padStart(2,'0')}`;
+    if (!roster[ds]) roster[ds] = [];
+    roster[ds].push({
+      dienst:     dienst[1].trim(),
+      start:      zeit ? zeit[1].padStart(5,'0') : null,
+      end:        zeit ? zeit[2].padStart(5,'0') : null,
+      anfangsort: anfang ? anfang[1].trim() : ''
     });
   }
 
-  // Fallback: also try to detect "FF", "F", "WF" (free days) — skip those
-  // Also try plain number cells next to service cells for robustness
+  // Fallback: row scan for pattern [1-2 digit day][3 digit service]
   if (Object.keys(roster).length === 0) {
-    // Alternative: look for cells whose text is a 3-digit number (service number)
-    // surrounded by a day-number cell
-    const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-    let rowMatch;
-    while ((rowMatch = rowRe.exec(html)) !== null) {
-      const row = rowMatch[1];
+    const trRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    let tr;
+    while ((tr = trRe.exec(html)) !== null) {
       const cells = [];
       const cellRe = /<td[^>]*>([\s\S]*?)<\/td>/gi;
-      let cm;
-      while ((cm = cellRe.exec(row)) !== null) {
-        cells.push(cm[1].replace(/<[^>]+>/g, '').trim());
-      }
-      // Look for pattern: day-number, service-number
+      let td;
+      while ((td = cellRe.exec(tr[1])) !== null)
+        cells.push(td[1].replace(/<[^>]+>/g,'').trim());
       for (let i = 0; i < cells.length - 1; i++) {
         if (/^\d{1,2}$/.test(cells[i]) && /^\d{3}$/.test(cells[i+1])) {
-          const dayNum2 = parseInt(cells[i]);
-          const svcNum = cells[i+1];
-          const dateStr2 = `${year}-${String(month+1).padStart(2,'0')}-${String(dayNum2).padStart(2,'0')}`;
-          if (!roster[dateStr2]) roster[dateStr2] = [];
-          if (!roster[dateStr2].find(x => x.dienst === svcNum)) {
-            roster[dateStr2].push({ dienst: svcNum, start: null, end: null, anfangsort: '' });
-          }
+          const ds = `${year}-${String(month+1).padStart(2,'0')}-${cells[i].padStart(2,'0')}`;
+          if (!roster[ds]) roster[ds] = [];
+          if (!roster[ds].find(x => x.dienst === cells[i+1]))
+            roster[ds].push({ dienst: cells[i+1], start: null, end: null, anfangsort: '' });
         }
       }
     }
@@ -132,87 +151,52 @@ function parseRoster(html) {
   return roster;
 }
 
-// ── Parse shift.aspx (Tagesplan) ─────────────────────────────────────────────
-// The page shows a table with columns:
-// Dienst | Von (Zeit) | Ort | Richtung | Bis (Zeit) | Ort | Abw. | Linie | Kurs | Umlauf | Beschreibung
-// Rows with bold/header: service summary line
-// We want: Dienst-Nr., Startzeit, Endzeit, Startort, Linie
-function parseShift(html, dateStr) {
+// ─── parse shift.aspx ────────────────────────────────────────────────────────
+// Columns: Dienst | Von-Zeit | Von-Ort | Richtung | Bis-Zeit | Bis-Ort | Abw | Linie | ...
+function parseShift(html) {
   const rows = [];
-
-  // Extract the data table rows
   const trRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-  let trMatch;
-
-  while ((trMatch = trRe.exec(html)) !== null) {
-    const rowHtml = trMatch[1];
+  let tr;
+  while ((tr = trRe.exec(html)) !== null) {
     const cells = [];
     const tdRe = /<td[^>]*>([\s\S]*?)<\/td>/gi;
     let td;
-    while ((td = tdRe.exec(rowHtml)) !== null) {
-      cells.push(td[1].replace(/<[^>]+>/g, '').trim());
-    }
-
-    if (cells.length < 8) continue;
-
-    const [dienst, vonZeit, vonOrt, richtung, bisZeit, bisOrt, abw, linie] = cells;
-
-    // Valid time rows: Von and Bis are HH:MM
-    if (!/^\d{2}:\d{2}$/.test(vonZeit) || !/^\d{2}:\d{2}$/.test(bisZeit)) continue;
-    // Skip pause/break entries
-    if (/pause|wegezeit|arbeitszeit/i.test(richtung) || /pause|wegezeit|arbeitszeit/i.test(bisOrt)) continue;
-
-    rows.push({
-      dienst: dienst || '',
-      start: vonZeit,
-      end: bisZeit,
-      vonOrt: vonOrt || '',
-      bisOrt: bisOrt || '',
-      linie: linie || '',
-      richtung: richtung || ''
-    });
+    while ((td = tdRe.exec(tr[1])) !== null)
+      cells.push(td[1].replace(/<[^>]+>/g,'').trim());
+    if (cells.length < 5) continue;
+    const [dienst, vonZeit, vonOrt, richtung, bisZeit, bisOrt='', , linie=''] = cells;
+    if (!/^\d{1,2}:\d{2}$/.test(vonZeit) || !/^\d{1,2}:\d{2}$/.test(bisZeit)) continue;
+    rows.push({ dienst, start: vonZeit.padStart(5,'0'), end: bisZeit.padStart(5,'0'), vonOrt, bisOrt, richtung, linie });
   }
-
   return rows;
 }
 
-// ── Main handler ────────────────────────────────────────────────────────────
+// ─── main handler ────────────────────────────────────────────────────────────
 exports.handler = async (event) => {
-  if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers: CORS_HEADERS, body: '' };
-  if (event.httpMethod !== 'POST') return { statusCode: 405, headers: CORS_HEADERS, body: JSON.stringify({ error: 'Method not allowed' }) };
+  if (event.httpMethod === 'OPTIONS') return { statusCode:200, headers:CORS, body:'' };
+  if (event.httpMethod !== 'POST')    return { statusCode:405, headers:CORS, body:JSON.stringify({error:'Method not allowed'}) };
 
   let body;
-  try { body = JSON.parse(event.body || '{}'); } catch { return { statusCode: 400, headers: CORS_HEADERS, body: JSON.stringify({ error: 'Invalid JSON' }) }; }
+  try { body = JSON.parse(event.body||'{}'); }
+  catch { return { statusCode:400, headers:CORS, body:JSON.stringify({error:'Invalid JSON'}) }; }
 
-  const { action, username, password, session: sessionIn, date } = body;
+  const { action='login', username, password, session:sessIn, date } = body;
 
-  // ── ACTION: login ──────────────────────────────────────────────────────────
-  if (!action || action === 'login') {
-    if (!username || !password) {
-      return { statusCode: 400, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'Benutzername und Passwort erforderlich' }) };
-    }
+  // ── LOGIN ─────────────────────────────────────────────────────────────────
+  if (action === 'login') {
+    if (!username || !password)
+      return { statusCode:400, headers:CORS, body:JSON.stringify({success:false,error:'Benutzername und Passwort erforderlich'}) };
 
     try {
-      // Step 1: GET login page to retrieve ViewState + cookies
-      const getResp = await request({
-        hostname: 'perdisweb.verkehrs-ag.de',
-        path: '/WebComm/default.aspx',
-        method: 'GET',
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
-      });
+      const jar = {};
 
-      const jar = parseCookies(getResp.headers['set-cookie']);
-      const viewState = extractViewState(getResp.body);
-      console.log('[PERDIS] ViewState fields:', Object.keys(viewState).join(', '));
+      // 1. GET login page → ViewState + initial cookies
+      const loginPage = await get('/WebComm/default.aspx', jar);
+      const vs = extractViewState(loginPage.body);
+      console.log('[LOGIN] ViewState keys:', Object.keys(vs).join(', '));
 
-      // Step 2: POST credentials with ViewState
-      const formData = querystring.stringify({
-        ...viewState,
-        UserName: username,
-        Password: password,
-        Logon: 'Logon'
-      });
-
+      // 2. POST credentials
+      const formData = querystring.stringify({ ...vs, UserName: username, Password: password, Logon: 'Logon' });
       const postResp = await request({
         hostname: 'perdisweb.verkehrs-ag.de',
         path: '/WebComm/default.aspx',
@@ -220,93 +204,92 @@ exports.handler = async (event) => {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Content-Length': Buffer.byteLength(formData),
-          'Cookie': cookieString(jar),
+          'Cookie': cookieStr(jar),
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Referer': 'https://perdisweb.verkehrs-ag.de/WebComm/default.aspx'
+          'Referer': 'https://perdisweb.verkehrs-ag.de/WebComm/default.aspx',
+          'Accept': 'text/html,application/xhtml+xml'
         }
       }, formData);
+      mergeCookies(jar, postResp.headers['set-cookie']);
+      console.log('[LOGIN] POST status:', postResp.status, 'location:', postResp.headers.location||'–');
+      console.log('[LOGIN] Cookies after POST:', Object.keys(jar).join(', '));
 
-      // Merge new cookies
-      const newCookies = parseCookies(postResp.headers['set-cookie']);
-      Object.assign(jar, newCookies);
-      const session = cookieString(jar);
+      // 3. Check login failure (still on login page with error message)
+      const stillOnLogin = postResp.status === 200 &&
+        postResp.body.includes('UserName') &&
+        /falsch|ung[üu]ltig|incorrect|invalid|failed|error/i.test(postResp.body);
+      if (stillOnLogin)
+        return { statusCode:401, headers:CORS, body:JSON.stringify({success:false,error:'Benutzername oder Passwort falsch'}) };
 
-      console.log('[PERDIS] Login status:', postResp.status, 'Location:', postResp.headers.location || 'none');
-      console.log('[PERDIS] Cookies:', Object.keys(jar).join(', '));
-
-      // Success check: either redirect to roster page, or body doesn't contain login form
-      const loginFailed = /Benutzername|Passwort|ungültig|incorrect|invalid/i.test(postResp.body) &&
-                          postResp.body.includes('UserName');
-      if (loginFailed) {
-        return { statusCode: 401, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'Benutzername oder Passwort falsch' }) };
+      // 4. Follow the redirect chain after POST (302 → homepage or wherever)
+      let nextPath = postResp.headers.location;
+      if (nextPath) {
+        if (!nextPath.startsWith('/')) nextPath = '/WebComm/' + nextPath;
+        console.log('[LOGIN] Following redirect to:', nextPath);
+        // Follow it (just to collect cookies – we don't need the body)
+        await get(nextPath, jar);
       }
 
-      // Step 3: Follow redirect if needed, then fetch roster
-      let rosterPath = '/WebComm/roster.aspx';
-      if (postResp.status === 302 || postResp.status === 301) {
-        rosterPath = postResp.headers.location || rosterPath;
-        if (!rosterPath.startsWith('/')) rosterPath = '/WebComm/' + rosterPath;
+      console.log('[LOGIN] Cookies after redirect:', Object.keys(jar).join(', '));
+
+      // 5. Now explicitly fetch roster.aspx with the fully built session
+      const rosterResp = await get('/WebComm/roster.aspx', jar);
+      console.log('[LOGIN] roster.aspx status:', rosterResp.status, 'body length:', rosterResp.body.length);
+
+      // If we're back at the login page, credentials were wrong
+      if (rosterResp.body.includes('UserName') && rosterResp.body.includes('Password') && !rosterResp.body.includes('Dienst')) {
+        return { statusCode:401, headers:CORS, body:JSON.stringify({success:false,error:'Session konnte nicht aufgebaut werden – bitte Zugangsdaten prüfen'}) };
       }
-
-      const rosterResp = await request({
-        hostname: 'perdisweb.verkehrs-ag.de',
-        path: rosterPath,
-        method: 'GET',
-        headers: { 'Cookie': session, 'User-Agent': 'Mozilla/5.0' }
-      });
-
-      // Merge any new session cookies
-      const rc = parseCookies(rosterResp.headers['set-cookie']);
-      Object.assign(jar, rc);
-      const finalSession = cookieString(jar);
 
       const roster = parseRoster(rosterResp.body);
-      console.log('[PERDIS] Roster days:', Object.keys(roster).length);
+      console.log('[LOGIN] Roster days parsed:', Object.keys(roster).length);
 
       return {
-        statusCode: 200,
-        headers: CORS_HEADERS,
-        body: JSON.stringify({ success: true, username, session: finalSession, roster })
+        statusCode: 200, headers: CORS,
+        body: JSON.stringify({ success:true, username, session: cookieStr(jar), roster })
       };
 
     } catch (err) {
-      console.error('[PERDIS] Login error:', err);
-      return { statusCode: 500, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: err.message }) };
+      console.error('[LOGIN] Error:', err);
+      return { statusCode:500, headers:CORS, body:JSON.stringify({success:false,error:err.message}) };
     }
   }
 
-  // ── ACTION: roster (refresh) ───────────────────────────────────────────────
+  // ── ROSTER refresh ────────────────────────────────────────────────────────
   if (action === 'roster') {
     try {
-      const rosterResp = await request({
+      const jar = {}; mergeCookies(jar, sessIn ? [sessIn] : []);
+      // sessIn is already a cookie string like "key=val; key2=val2"
+      // We pass it directly as Cookie header
+      const resp = await request({
         hostname: 'perdisweb.verkehrs-ag.de',
         path: '/WebComm/roster.aspx',
         method: 'GET',
-        headers: { 'Cookie': sessionIn, 'User-Agent': 'Mozilla/5.0' }
+        headers: { 'Cookie': sessIn, 'User-Agent': 'Mozilla/5.0' }
       });
-      const roster = parseRoster(rosterResp.body);
-      return { statusCode: 200, headers: CORS_HEADERS, body: JSON.stringify({ success: true, roster }) };
+      const roster = parseRoster(resp.body);
+      return { statusCode:200, headers:CORS, body:JSON.stringify({success:true,roster}) };
     } catch (err) {
-      return { statusCode: 500, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: err.message }) };
+      return { statusCode:500, headers:CORS, body:JSON.stringify({success:false,error:err.message}) };
     }
   }
 
-  // ── ACTION: shift ──────────────────────────────────────────────────────────
+  // ── SHIFT detail ──────────────────────────────────────────────────────────
   if (action === 'shift') {
-    if (!date) return { statusCode: 400, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'date fehlt' }) };
+    if (!date) return { statusCode:400, headers:CORS, body:JSON.stringify({success:false,error:'date fehlt'}) };
     try {
-      const shiftResp = await request({
+      const resp = await request({
         hostname: 'perdisweb.verkehrs-ag.de',
         path: `/WebComm/shift.aspx?${date}`,
         method: 'GET',
-        headers: { 'Cookie': sessionIn, 'User-Agent': 'Mozilla/5.0' }
+        headers: { 'Cookie': sessIn, 'User-Agent': 'Mozilla/5.0' }
       });
-      const rows = parseShift(shiftResp.body, date);
-      return { statusCode: 200, headers: CORS_HEADERS, body: JSON.stringify({ success: true, date, rows }) };
+      const rows = parseShift(resp.body);
+      return { statusCode:200, headers:CORS, body:JSON.stringify({success:true,date,rows}) };
     } catch (err) {
-      return { statusCode: 500, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: err.message }) };
+      return { statusCode:500, headers:CORS, body:JSON.stringify({success:false,error:err.message}) };
     }
   }
 
-  return { statusCode: 400, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'Unbekannte action' }) };
+  return { statusCode:400, headers:CORS, body:JSON.stringify({success:false,error:'Unbekannte action'}) };
 };
